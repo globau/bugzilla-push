@@ -260,13 +260,13 @@ sub _send {
 
         # We are using STOMP
         if( Bugzilla->params->{'push-protocol'} eq 'STOMP' ) {
-            use Bugzilla::Extension::Push::Backend::STOMP;
+            require Bugzilla::Extension::Push::Backend::STOMP;
             $self->{'backend'} = new Bugzilla::Extension::Push::Backend::STOMP;
         }
 
         # We are using AMQP
         if( Bugzilla->params->{'push-protocol'} eq 'AMQP' ) {
-            use Bugzilla::Extension::Push::Backend::AMQP;
+            require Bugzilla::Extension::Push::Backend::AMQP;
             $self->{'backend'} = new Bugzilla::Extension::Push::Backend::AMQP(
                 Bugzilla->params->{'AMQP-spec-xml-path'}
             );
