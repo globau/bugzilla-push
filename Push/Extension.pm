@@ -159,17 +159,23 @@ sub _send {
 
         # Check bugs
         if( $class eq 'Bugzilla::Bug' ) {
+            my $bug = $object;
 
             if( $msgtype ne 'object-created' ) {
                 # Check if the default user can see the bug
                 # (we can't do this for new bugs as we don't have the id yet)
-                if( !$default_user->can_see_bug($object->bug_id) ) {
+                if( !$default_user->can_see_bug($bug->bug_id) ) {
                     return;
                 }
             }else {
                 # Make sure the default user has access to the product
                 # for each new bug filed, as we can't use the bug id above
-                if( !$object->product->user_has_access($default_user) ) {
+                my $product = $bug->product;
+                if( Scalar::Util::blessed($product) ne 'Bugzilla::Product' ) {
+                    # Older Bugzilla versions return a product name
+                    $product = Bugzilla::Product->new({ name => $product });
+                }
+                if( !$product->user_has_access($default_user) ) {
                     return;
                 }
             }
