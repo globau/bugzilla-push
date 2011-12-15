@@ -22,119 +22,79 @@
 package Bugzilla::Extension::Push::Params;
 
 use strict;
+use warnings;
 
 use Bugzilla::Config::Common;
 use Bugzilla::Util;
 
 our $sortkey = 1250;
 
-sub check_push_protocol {
-    my $option = shift;
-
-    if( $option eq 'AMQP' ) {
-        if( !Bugzilla->feature('push_amqp') ) {
-            return "AMQP support is not available. Run checksetup.pl " .
-                   "for more details";
-        }
-    }
-
-    if( $option eq 'STOMP' ) {
-        if( !Bugzilla->feature('push_stomp') ) {
-            return "STOMP support is not available. Run checksetup.pl " .
-                   "for more details";
-        }
-    }
-
-    return "";
-}
-
 use constant get_param_list => (
-  {
-   name => 'push-protocol',
-   type => 's',
-   choices => [ '', 'AMQP', 'STOMP' ],
-   default => '',
-   checker => \&check_push_protocol
-  },
-
-  {
-   name => 'push-hostname',
-   type => 't',
-   default => ''
-  },
-
-  {
-   name => 'push-port',
-   type => 't',
-   default => ''
-  },
-
-  {
-   name => 'push-username',
-   type => 't',
-   default => ''
-  },
-  {
-   name => 'push-password',
-   type => 'p',
-   default => ''
-  },
-  {
-   name => 'AMQP-spec-xml-path',
-   type => 't',
-   default => ''
-  },
-  {
-   name => 'push-object-created-exchange',
-   type => 't',
-   default => ''
-  },
-  {
-   name => 'push-object-created-vhost',
-   type => 't',
-   default => '/'
-  },
-  {
-   name => 'push-object-created-routingkey',
-   type => 't',
-   default => '%type%.new'
-  },
-  {
-   name => 'push-object-modified-exchange',
-   type => 't',
-   default => ''
-  },
-  {
-   name => 'push-object-modified-vhost',
-   type => 't',
-   default => '/'
-  },
-  {
-   name => 'push-object-data-changed-routingkey',
-   type => 't',
-   default => '%type%.changed.%field%'
-  },
-# TODO: Differentiate between data that has changed, been added, or been removed
-#  {
-#   name => 'push-object-data-added-routingkey',
-#   type => 't',
-#   default => "%type%.added.%field%"
-#  },
-#  {
-#   name => 'push-object-data-removed-routingkey',
-#   type => 't',
-#   default => "%type%.removed.%field%"
-#  },
-  {
-   name => 'push-fail-on-error',
-   type => 'b',
-   default => 1
-  },
-  {
-   name => 'push-publish-restricted-messages',
-   type => 'b',
-   default => 0
-  },
+    {
+        name => 'push-enabled',
+        type => 's',
+        choices => [ 'off', 'on' ],
+        default => 'off',
+    },
 );
+
+=cut
+    {
+        name => 'push-hostname',
+        type => 't',
+        default => ''
+    },
+    {
+        name => 'push-port',
+        type => 't',
+        default => ''
+    },
+    {
+        name => 'push-username',
+        type => 't',
+        default => ''
+    },
+    {
+        name => 'push-password',
+        type => 'p',
+        default => ''
+    },
+    {
+        name => 'AMQP-spec-xml-path',
+        type => 't',
+        default => ''
+    },
+    {
+        name => 'push-object-created-exchange',
+        type => 't',
+        default => ''
+    },
+    {
+        name => 'push-object-created-vhost',
+        type => 't',
+        default => '/'
+    },
+    {
+        name => 'push-object-created-routingkey',
+        type => 't',
+        default => '%type%.new'
+    },
+    {
+        name => 'push-object-modified-exchange',
+        type => 't',
+        default => ''
+    },
+    {
+        name => 'push-object-modified-vhost',
+        type => 't',
+        default => '/'
+    },
+    {
+        name => 'push-object-data-changed-routingkey',
+        type => 't',
+        default => '%type%.changed.%field%'
+    },
+);
+=cut
 
 1;

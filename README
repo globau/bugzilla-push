@@ -1,149 +1,147 @@
-Bugzilla Push Extension
------------------------
-This extension sends messages to a message broker via AMQP or STOMP
-whenever an object (bug, keyword, component, etc) is created or modified.
+bmo / pulse integration
+=======================
 
-For more information, read these blog posts:
-* http://christian.legnitto.com/blog/2010/08/20/push-notifications-for-bugzilla/
-* http://christian.legnitto.com/blog/2010/09/10/bugzilla-amqp-is-now-buzgilla-push-supports-the-stomp-protocol/
+notes to include in this document:
 
-You can also view these demo videos. Warning, they are large (recorded off a
-24 inch monitor) but the actual file size is small:
-* http://people.mozilla.org/~clegnitto/broker/demo.theora.ogv (OGG Theora)
-* http://people.mozilla.org/~clegnitto/broker/demo.webm (WebM)
+  - publishes each change in bmo to pulse
+  - will support multiple connectors
+    - initially just pulse
+    - want to push bug metadata into an elastic-search cluster
+  - limited to new and modified bugs and attachments on public bugs/attachments
+  - if several things are changed at the same time, a separate message is generated for each change
+  - comments are not pushed, requires bugzilla 4.2 (will fix as part of the bmo/4.2 upgrade project)
+  - talk about objects vs data values
+    - objects always contain 'id', and generally 'name'
+    - if an object field is no set ==> undef (eg bug:milestone)
 
-Please note this has not been tested in production yet! This is a very early
-release, and though it works please proceed with caution. On the plus side,
-it doesn't modify any Bugzilla data--the worst that can happen is 
-your Bugzilla installation fails until you deactivate the extension. I have
-tested it locally against Bugzilla's trunk. If you find problems with older 
-releases, let me know.
+message structure:
 
-You can deactivate the extension by moving it out of the Bugzilla extension
-directory or placing an empty file named "disabled" in the extension directory
-and then restarting your webserver.
+  - always contains an "event" hash
+    - user: actor object
+    - action: "create" or "modify"
+    - target: name of the object the change was actioned on (eg "bug")
+    - time: when
+  - always contains an event.target hash
 
-WARNING! WARNING! WARNING!
+sample message:
 
-The message fields/formats *will likely change* in future revisions. Currently
-the messages look like:
+{
+   "bug" : {
+      "alias" : "",
+      "assigned_to" : {
+         "id" : 13647,
+         "login" : "glob@mozilla.com",
+         "real_name" : "byron jones [:glob]"
+      },
+      "cf_blocking_191" : "",
+      "cf_blocking_192" : "",
+      "cf_blocking_20" : "",
+      "cf_blocking_fennec" : "",
+      "cf_blocking_fx" : "",
+      "cf_crash_signature" : "",
+      "cf_status_191" : "",
+      "cf_status_192" : "",
+      "cf_status_20" : "",
+      "cf_status_firefox5" : "",
+      "classification" : "Components",
+      "component" : {
+         "id" : 539,
+         "name" : "General"
+      },
+      "creation_time" : "2011-12-06T09:18:00",
+      "flags" : [],
+      "id" : 648667,
+      "keywords" : [
+         "regression"
+      ],
+      "last_change_time" : "2011-12-06T09:44:23",
+      "operating_system" : "Mac OS X",
+      "platform" : "x86",
+      "priority" : "",
+      "product" : {
+         "id" : 1,
+         "name" : "Core"
+      },
+      "reporter" : {
+         "id" : 13647,
+         "login" : "glob@mozilla.com",
+         "real_name" : "byron jones [:glob]"
+      },
+      "resolution" : "",
+      "severity" : "normal",
+      "status" : {
+         "id" : 3,
+         "name" : "ASSIGNED"
+      },
+      "summary" : "test",
+      "target_milestone" : null,
+      "url" : "",
+      "version" : {
+         "id" : 355,
+         "name" : "unspecified"
+      },
+      "whiteboard" : ""
+   },
+   "event" : {
+      "action" : "modify",
+      "added" : "glob@mozilla.com",
+      "field" : "assigned_to",
+      "removed" : "nobody@mozilla.org",
+      "target" : "bug",
+      "time" : "2011-12-06T09:45:52",
+      "user" : {
+         "id" : 13647,
+         "login" : "glob@mozilla.com",
+         "real_name" : "byron jones [:glob]"
+      }
+   }
+}
 
-_meta:
-    'routing_key' => 'The routing key'
-    'time'        => 'Time the message was created'
-payload:
-    OBJECT_TYPE => {DUMP OF BUGZILLA OBJECT}
-    'change' => {DUMP OF BUGZILLA CHANGE REPRESENTATION}
-             (for changed messages)
+flow
 
-Both the envelope format and the format of the raw data will likely change.
-I am currently doing mapping for types, but the mapping may change until I
-"officially" decide the interface is frozen. When possible, I tried to copy 
-the WebServices. All times/dates are in iso8601 format.
+- the bugzilla extension inserts messages into a 'push' table
+- a daemon polls the table and calls on each connector to publish the message
+- as order is important, we need to manage transient failures
 
-Questions, comments, concerns: email Christian Legnitto <clegnitto@mozilla.com>
+bugzilla change --> 'push' table
 
+poe daemon : polling 'push' table
 
-Requirements
------------------------
-* You need to patch Bugzilla with the patch from 
-  https://bugzilla.mozilla.org/show_bug.cgi?id=587793.
-    (the patch is trivial and will be integrated in a later Bugzilla release)
+    foreach connector (connectors)
+        # check if a connector is backlogged
+        if (count(table.push_backlog[connector]) > 0)
+            connector.backlogged = true
+        else
+            connector.backlogged = false
 
-* If you want comment messages, you need to patch Bugzilla with the patch from 
-  https://bugzilla.mozilla.org/show_bug.cgi?id=590334. The extension should
-  still work without the patch, but no messages will be sent for any events
-  related to comments
+    # process each pending message
+    foreach message (table.push[oldest first])
+        foreach connector (connectors)
+            if (!connector.backlogged)
+                result = connector.send(message)
+                if (result == transient_failure)
+                    log transient error
+                    connector.backlogged = true
+                else if (result == permanant_failure)
+                    log failure
+                else
+                    log success
+            if (connector.backlogged)
+                insert into table.push_backlog[connector]
+        delete message from table.push
 
-* Perl module Net::RabbitFoot
-    (if you want to use AMQP)
-
-* You should probably patch Net::RabbitFoot with the patch from
-  http://github.com/cooldaemon/RabbitFoot/commit/ec13602e3bb4d676f750a22e659bc8aedc09f16f
-  until an updated version gets in cpan (or build from RabbitFoot's source)
-
-* Perl module Net::Stomp
-    (if you want to use STOMP)
-
-* Perl module Scalar::Util
-    (used to determine type of object we are messaging about, already required)
-
-* Perl module JSON >= 2.07
-    (used to serialize the message, already required)
-
-
-Installation
------------------------
-1. Copy the Push directory to the Bugzilla "extensions" directory
-2. (optional) sudo perl /path/to/bugzilla/install-module.pl [Requirements above]
-3. Login to your Bugzilla installation as an administrator
-4. Click "Administration"
-5. Click "Parameters"
-6. Click "Push Integration" in the left menu
-7. Insert data specific to your broker setup
+    # process backlog
+    foreach connector (connectors)
+        foreach message (table.push_backlog[connector])
+            result = connector.send(message)
+            if (result == transient_failure)
+                log transient error
+                break out of foreach message loop
+            else if (result == permanant_failure
+                log failure
+            else
+                log success
+            delete message from table.push_backlog
+                
 
 
-Known Issues / TODO
------------------------
-* Messages are always serialized with JSON. Support for other schemes will be
-added in the future
-
-* The exchanges are currently hardcoded as durable topic exchanges. I intend
-to make this configurable via the admin interface
-
-* I need to come up with stable object mappings so that consumers don't
-break when Bugzilla changes the internal representations. I'm mostly there
-
-* Comments only send comment.new messages. I want them also to send bug changed
-messages as well (perhaps with configurable behavior)
-
-* Custom fields are supported as simple strings rather than objects. I plan
-to make this support more robust in the future
-
-* Vhosts other than "/" have not been tested, though they probably work
-
-* I want to make the message verbosity configurable. Currently it resolves and
-includes most embedded objects, which may not be ideal for every use-case
-
-* Due to the way Bugzilla extensions work, the message is sent during a
-database transaction. If the transaction is rolled back the message will still
-be sent. I'm thinking of ways to mitigate/fix this, but it should generally
-be a non-issue for now
-
-* Currently messages are sent for each change. In the future I want to make it
-configrable between current behavior, current behavior + a changeset message,
-and only a changeset message
-
-* Related to the previous, I want to break additions (changes where the value 
-before wasn't set) removals (changes where the value was set before and not 
-after) and general changes (fields that had a value that changed) into seperate
-messages so consumers don't have to know stuff like '---' means the field was
-cleared, etc
-
-* Be aware, if you choose to send messages about secure bugs and allow public
-access to your broker you are esentially removing the bug security.
-In the future I intend to allow publishing secure bug messages to a different
-different exchange or server as well as disallowing any messages a public
-bugzilla user couldn't see
-
-* Bug closed messages are not sent. Currently, consumers will need to listen to
-bug changed messages and look at 'is_open' in the status. I intend to make
-this configurable so that you can send closed and reopened messages
-
-* Object deletion messages are not sent. This is a future feature I want to add
-if at all possible
-
-* It would be nice in the future for the connection and channel to stay open
-between Bugzilla and the broker (for simplicity and performance). I'm not sure
-this is possible with the current extension system
-
-* There has been no performance testing, but I will (hopefully) be testing
-soon. Whenever I saw a chance to speed things up / return early I did though.
-
-* The coding style doesn't match Bugzilla's coding guidelines
-
-* I am not a Perl programmer, so I am sure there are better ways to write
-portions of the extension. I'll be doing more general code cleanup and
-solidifying as time goes on
-
-* This file is pretty much the only documentation. I need to write more!

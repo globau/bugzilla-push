@@ -1,443 +1,270 @@
-# -*- Mode: perl; indent-tabs-mode: nil -*-
-#
-# The contents of this file are subject to the Mozilla Public
-# License Version 1.1 (the "License"); you may not use this file
-# except in compliance with the License. You may obtain a copy of
-# the License at http://www.mozilla.org/MPL/
-#
-# Software distributed under the License is distributed on an "AS
-# IS" basis, WITHOUT WARRANTY OF ANY KIND, either express or
-# implied. See the License for the specific language governing
-# rights and limitations under the License.
-#
-# The Original Code is the Push Bugzilla Extension.
-#
-# The Initial Developer of the Original Code is the Mozilla Foundation.
-# Portions created by the Initial Developer are Copyright (C) 2010 the
-# Initial Developer. All Rights Reserved.
-#
-# Contributor(s):
-#   Christian Legnitto <clegnitto@mozilla.com>
+# boilerplate
 
 package Bugzilla::Extension::Push;
 
 use strict;
-use Bugzilla::Bug;
-use Bugzilla::Error;
-use Bugzilla::Util;
+use warnings;
+
 use base qw(Bugzilla::Extension);
 
-# Dependencies
-use Scalar::Util;
-use JSON qw(-convert_blessed_universally);
-
-# Use our lib
 use Bugzilla::Extension::Push::Util;
+use Bugzilla::Extension::Push::Serialise;
 
-our $VERSION = '0.01';
+use JSON qw(-convert_blessed_universally);
+use Scalar::Util 'blessed';
 
-# Override this hook to get configuration options in the Admin section
+our $VERSION = '1';
+
+#
+# deal with creation and updated events
+#
+
+sub _object_created {
+    my ($self, $args) = @_;
+
+    my $object = _get_object_from_args($args);
+    return unless $object;
+    return unless _should_push($object);
+    return unless is_public($object, 0);
+
+    $self->_push('create', $object, { timestamp => $args->{'timestamp'} });
+}
+
+sub _object_modified {
+    my ($self, $args) = @_;
+
+    my $changes = $args->{'changes'} || {};
+    return unless scalar keys %$changes;
+
+    my $object = _get_object_from_args($args);
+    return unless $object;
+    return unless _should_push($object);
+    return unless is_public($object, 1);
+
+    # make flagtypes changes easier to process
+    if (exists $changes->{'flagtypes.name'}) {
+        _split_flagtypes($changes);
+    }
+
+    # send an individual message for each change
+    foreach my $field_name (keys %$changes) {
+        my $change = {
+            field     => $field_name,
+            removed   => $changes->{$field_name}[0],
+            added     => $changes->{$field_name}[1],
+            timestamp => $args->{'timestamp'},
+        };
+
+        $self->_push('modify', $object, $change);
+    }
+}
+
+sub _get_object_from_args {
+    my ($args) = @_;
+    return get_first_value($args, qw(object bug flag group));
+}
+
+sub _should_push {
+    my ($object) = @_;
+    my $class = blessed($object);
+    return grep { $_ eq $class } qw(Bugzilla::Bug Bugzilla::Attachment);
+}
+
+# changes to bug flags are presented in a single field 'flagtypes.name' split
+# into individual fields
+sub _split_flagtypes {
+    my ($changes) = @_;
+
+    my @removed = _split_flagtype($changes->{'flagtypes.name'}->[0]);
+    my @added = _split_flagtype($changes->{'flagtypes.name'}->[1]);
+    delete $changes->{'flagtypes.name'};
+
+    foreach my $ra (@removed, @added) {
+        $changes->{$ra->[0]} = ['', ''];
+    }
+    foreach my $ra (@removed) {
+        my ($name, $value) = @$ra;
+        $changes->{$name}->[0] = $value;
+    }
+    foreach my $ra (@added) {
+        my ($name, $value) = @$ra;
+        $changes->{$name}->[1] = $value;
+    }
+}
+
+sub _split_flagtype {
+    my ($value) = @_;
+    my @result;
+    foreach my $change (split(/, /, $value)) {
+        my $requestee = '';
+        if ($change =~ s/\(([^\)]+)\)$//) {
+            $requestee = $1;
+        }
+        my ($name, $value) = $change =~ /^(.+)(.)$/;
+        $value .= " ($requestee)" if $requestee;
+        push @result, [ "flag.$name", $value ];
+    }
+    return @result;
+}
+
+# changes to attachment flags come in via flag_end_of_update which has a
+# completely different structure for reporting changes than
+# object_end_of_update.  this morphs flag to object updates.
+sub _morph_flag_updates {
+    my ($args) = @_;
+
+    my @removed = _morph_flag_update($args->{'old_flags'});
+    my @added = _morph_flag_update($args->{'new_flags'});
+    delete $args->{'old_flags'};
+    delete $args->{'new_flags'};
+
+    my $changes = {};
+    foreach my $ra (@removed, @added) {
+        $changes->{$ra->[0]} = ['', ''];
+    }
+    foreach my $ra (@removed) {
+        my ($name, $value) = @$ra;
+        $changes->{$name}->[0] = $value;
+    }
+    foreach my $ra (@added) {
+        my ($name, $value) = @$ra;
+        $changes->{$name}->[1] = $value;
+    }
+
+    $args->{'changes'} = $changes;
+}
+
+sub _morph_flag_update {
+    my ($values) = @_;
+    my @result;
+    foreach my $change (@$values) {
+        $change =~ s/^[^:]+://;
+        my $requestee = '';
+        if ($change =~ s/\(([^\)]+)\)$//) {
+            $requestee = $1;
+        }
+        my ($name, $value) = $change =~ /^(.+)(.)$/;
+        $value .= " ($requestee)" if $requestee;
+        push @result, [ "flag.$name", $value ];
+    }
+    return @result;
+}
+
+#
+# serialise and insert into the queue
+#
+
+sub _push {
+    my ($self, $message_type, $object, $changes) = @_;
+    my $rh;
+
+    # serialise the object
+    my ($rh_object, $name) = _serialiser()->object_to_hash($object);
+    if (!$rh_object) {
+        # XXX this die should become a warn when out of dev
+        die "empty hash from serialiser ($message_type $object)\n";
+        return;
+    }
+    $rh->{$name} = $rh_object;
+
+    # add in the events hash
+    my $rh_event = _serialiser()->changes_to_event($changes);
+    return unless $rh_event;
+    $rh_event->{'action'} = $message_type;
+    $rh_event->{'target'} = $name;
+    $rh->{'event'} = $rh_event;
+
+    # TODO insert into a table instead :)
+    open(FH, ">>data/pulse");
+    print FH $self->_to_json($rh);
+    print FH "\n\n";
+    close FH;
+}
+
+#
+# helpers
+#
+
+sub _serialiser {
+    my ($self) = @_;
+    my $cache = Bugzilla->request_cache->{'push'};
+    if (!exists $cache->{'seriliaser'}) {
+        $cache->{'serialiser'} = Bugzilla::Extension::Push::Serialise->new();
+    }
+    return $cache->{'serialiser'};
+}
+
+sub _to_json {
+    my ($self, $rh) = @_;
+    my $cache = Bugzilla->request_cache->{'push'};
+    my $json;
+    if (!exists $cache->{'json'}) {
+        $json = JSON->new();
+        $json->shrink(1);
+        $json->canonical(1); # debugging only XXX
+        $cache->{'json'} = $json;
+    } else {
+        $json = $cache->{'json'};
+    }
+    return $json->pretty->encode($rh); # debugging only XXX
+    return $json->encode($rh);
+}
+
+#
+# hooks
+#
+
+sub object_end_of_create {
+    my ($self, $args) = @_;
+    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+
+    # it's better to process objects from a non-generic end_of_create where
+    # possible; don't process them here to avoid duplicate messages
+    my $object = _get_object_from_args($args);
+    return if !$object ||
+        $object->isa('Bugzilla::Bug');
+
+    $self->_object_created($args);
+}
+
+sub object_end_of_update {
+    my ($self, $args) = @_;
+    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+
+    # it's better to process objects from a non-generic end_of_update where
+    # possible; don't process them here to avoid duplicate messages
+    my $object = _get_object_from_args($args);
+    return if !$object ||
+        $object->isa('Bugzilla::Bug') ||
+        $object->isa('Bugzilla::Flag');
+
+    $self->_object_modified($args);
+}
+
+# process bugs once they are fully formed
+# object_end_of_update is triggered while a bug is being created
+sub bug_end_of_create {
+    my ($self, $args) = @_;
+    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+    $self->_object_created($args);
+}
+
+sub bug_end_of_update {
+    my ($self, $args) = @_;
+    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+    $self->_object_modified($args);
+}
+
+sub flag_end_of_update {
+    my ($self, $args) = @_;
+    _morph_flag_updates($args);
+    $self->_object_modified($args);
+}
+
 sub config_add_panels {
     my ($self, $args) = @_;
     my $modules = $args->{'panel_modules'};
-    $modules->{'Push'} = 'Bugzilla::Extension::Push::Params';
-}
-
-# Call our wrapper every time an object is created
-sub object_end_of_create {
-    my ($self, $args) = @_;
-    $self->_wrap('object_end_of_create', $args);
-}
-
-# Call our wrapper every time an object is updated
-sub object_end_of_update {
-    my ($self, $args) = @_;
-
-    # These object types are handled by their respective subs
-    # If we handled them at the object level we would get
-    # duplicate messages
-    if( $args->{'object'}->isa('Bugzilla::Bug') || 
-        $args->{'object'}->isa('Bugzilla::Group') ||
-        $args->{'object'}->isa('Bugzilla::Flag') ) {
-        return;
-    }
-
-    # Everything else we want to process at the object level
-    $self->_wrap('object_end_of_update', $args);
-}
-
-# Call our wrapper every time a bug is updated
-# (this is needed as not every change is caught by the object hook)
-sub bug_end_of_update {
-    my ($self, $args) = @_;
-    $self->_wrap('object_end_of_update', $args);
-}
-
-# Call our wrapper every time a flag is updated
-# (this is needed as not every change is caught by the object hook)
-sub flag_end_of_update {
-    my ($self, $args) = @_;
-    $self->_wrap('object_end_of_update', $args);
-}
-
-# Call our wrapper every time a group is updated
-# (this is needed as not every change is caught by the object hook)
-sub group_end_of_update {
-    my ($self, $args) = @_;
-    $self->_wrap('object_end_of_update', $args);
-}
-
-# Wrapper makes it so we can choose if message send failures are fatal or not
-sub _wrap {
-    my ($self, $func, $args) = @_;
-    my $priv_func = "_$func";
-    eval { $self->$priv_func($args); };
-    if( $@ ) {
-        warn "Push: Error while sending message: ", $func, ": ", $@;
-        if( Bugzilla->params->{'push-fail-on-error'} ) {
-            $@ =~ s/\s+at .*$//;
-            ThrowCodeError($@);
-        }
-    }
-}
-
-sub _object_end_of_create {
-    my ($self, $args) = @_;
-    $self->_send('object-created', $args);
-}
-
-sub _object_end_of_update {
-    my ($self, $args) = @_;
-    $self->_send('object-modified', $args);
-}
-
-sub _send {
-    my ($self, $msgtype, $args) = @_;
-
-    my $object     = $args->{'object'} || 
-                     $args->{'bug'} ||
-                     $args->{'flag'} ||
-                     $args->{'group'}; 
-
-    my $old_object = $args->{'old_object'} ||
-                     $args->{'old_bug'} ||
-                     $args->{'old_flag'} ||
-                     $args->{'old_group'};
-
-    my $changes    = $args->{'changes'} || {};
-
-    # We get called on user objects even when there are no changes
-    if( $msgtype eq 'object-modified' ) {
-        unless( $changes && %$changes ) {
-            return;
-        }
-    }
-
-    my $class = Scalar::Util::blessed($object);
-
-    if( $class =~ /Search/g ) {
-        return;
-    }
-
-    # Flag values set on bugs show up as "created", we want to send "modified"
-    # messages instead
-    if( $msgtype eq 'object-created' && $class eq "Bugzilla::Flag") {
-        my $changes = {
-            # We use flagtype.name as that's what's used by bugzilla once a
-            # flag is attached to a bug and changes
-            'flagtype.name' => ['',$object->{'name'}]
-        };
-        $self->_object_end_of_update($object->bug(), $changes);
-        return;
-    }
-
-    # Support turning off restricted messages
-    if( !Bugzilla->params->{'push-publish-restricted-messages'} ) {
-
-        # We have the extension act like the default user
-        my $default_user = new Bugzilla::User;
-
-        # Check bugs
-        if( $class eq 'Bugzilla::Bug' ) {
-            my $bug = $object;
-
-            if( $msgtype ne 'object-created' ) {
-                # Check if the default user can see the bug
-                # (we can't do this for new bugs as we don't have the id yet)
-                if( !$default_user->can_see_bug($bug->bug_id) ) {
-                    return;
-                }
-            }else {
-                # Make sure the default user has access to the product
-                # for each new bug filed, as we can't use the bug id above
-                my $product = $bug->product;
-                if( Scalar::Util::blessed($product) ne 'Bugzilla::Product' ) {
-                    # Older Bugzilla versions return a product name
-                    $product = Bugzilla::Product->new({ name => $product });
-                }
-                if( !$product->user_has_access($default_user) ) {
-                    return;
-                }
-            }
-        }
-
-        # Check comments
-        if( $class eq 'Bugzilla::Comment' ) {
-            # Check if the comment is private
-            if( $object->is_private ) {
-                return;
-            }
-            # Check if the default user can see the bug
-            my $bug = $object->bug;
-            if( !$default_user->can_see_bug($bug->bug_id) ) {
-                return;
-            }
-        }
-
-        # Check attachments
-        if( $class eq 'Bugzilla::Attachment' ) {
-            # Check if the attachment is private
-            if( $object->isprivate ) {
-                return;
-            }
-            # Check if the default user can see the bug
-            my $bug = $object->bug;
-            if( !$default_user->can_see_bug($bug->bug_id) ) {
-                return;
-            }
-        }
-
-        # Check users
-        if( $class eq 'Bugzilla::User' ) {
-            # If the admin wants to restrict user visibility to specific groups,
-            # assume the public user isn't in that group and don't send the
-            # message 
-            if( Bugzilla->params->{'usevisibilitygroups'} ) {
-                return;
-            }
-        }
-
-        # Check products
-        if( $class eq 'Bugzilla::Product' && $msgtype ne 'object-created' ) {
-            # Make sure the default user has access to the product
-            # (we can't do this check when the product is created, but that's
-            # ok as there is no way to restrict the product at creation time
-            # via the admin interface. You can only add group restrictions
-            # once the product is created)
-            if( !$object->user_has_access($default_user) ) {
-                return;
-            }
-        }
-    }
-
-    # Find the "type" of object (simple lower-case string)
-    my $type = lc $class;
-    $type =~ s/^bugzilla::([^:]+).*$/$1/g;
-
-    # Process the exchange the user wants to use
-    my $exchange = Bugzilla->params->{'push-'.$msgtype.'-exchange'};
-    $exchange =~ s/%type%/$type/g;
-
-    # Process the vhost the user wants to use
-    my $vhost = Bugzilla->params->{'push-'.$msgtype.'-vhost'};
-    $vhost =~ s/%type%/$type/g;
-
-    # Set up the json encoder
-    my $json = JSON->new->utf8;
-    $json->allow_nonref(1);
-    $json->allow_blessed(1);
-    $json->convert_blessed(1);
-    $json->shrink(1);
-
-    # This prepares the object so JSON doesn't choke. It is also where
-    # translation will happen to keep a stable API
-    my $prepped_object = prep_object($object);
-
-    # Store the user who did the action 
-    $prepped_object->{'who'} = prep_object(Bugzilla->user);
-
-    # Make sure there is a protocol specified
-    if( !Bugzilla->params->{'push-protocol'} ) {
-        die "missing-push-protocol";
-    }
-
-    # Initialize the desired protocol backend
-    if( !$self->{'backend'} ) {
-
-        # We are using STOMP
-        if( Bugzilla->params->{'push-protocol'} eq 'STOMP' ) {
-            require Bugzilla::Extension::Push::Backend::STOMP;
-            $self->{'backend'} = new Bugzilla::Extension::Push::Backend::STOMP;
-        }
-
-        # We are using AMQP
-        if( Bugzilla->params->{'push-protocol'} eq 'AMQP' ) {
-            require Bugzilla::Extension::Push::Backend::AMQP;
-            $self->{'backend'} = new Bugzilla::Extension::Push::Backend::AMQP(
-                Bugzilla->params->{'AMQP-spec-xml-path'}
-            );
-        }
-    }
-
-    # Connect to the broker
-    $self->{'backend'}->connect({
-        hostname => Bugzilla->params->{'push-hostname'},
-        port     => Bugzilla->params->{'push-port'},
-        username => Bugzilla->params->{'push-username'},
-        password => Bugzilla->params->{'push-password'},
-    });
-
-    # Get a timestamp to include in the message
-    my $timestamp = Bugzilla->dbh->selectrow_array('SELECT LOCALTIMESTAMP(0)');
-
-    # Header support varies by backend
-    # TODO: Support more than json
-    my $headers = {
-        'content-type' => 'application/json'
-    };
-    
-    # Do this if we are creating a message for a new object
-    if( $msgtype eq 'object-created' ) {
-
-        # Process the routing key the user wants to use
-        my $routingkey = Bugzilla->params->{'push-object-created-routingkey'};
-        $routingkey =~ s/%type%/$type/g;
-
-        # Create the message in the proper format
-        my $msg = $self->msg_envelope($routingkey,
-                                      $timestamp,
-                                      $type,
-                                      $prepped_object,
-        );
-
-        # Send the message
-        $self->{'backend'}->publish({
-            exchange     => $exchange,
-            vhost        => $vhost,
-            message      => $json->encode($msg),
-            message_type => $msgtype,
-            routing_key  => $routingkey,
-            headers      => $headers
-        });
-    }
-
-    # Do this if we are creating a message for a changed object
-    if( $msgtype eq 'object-modified' ) {
-    
-        # Send individual messages for each change
-        foreach my $changed_field (keys %$changes) {
-
-            # Handle this one special
-            my $replacement = $changed_field;
-            if( $changed_field eq "flagtypes.name" ) {
-                # This is sort of a hack to make data nice
-                $replacement = 'flag.';
-                # Look for a value that isn't empty
-                foreach my $val (@{$changes->{'flagtypes.name'}}) {
-                    if( $val ) {
-                        # We have a value, subtract the -, +, or ?(user)
-                        #  off the end to get the field name
-                        $val =~ s/^([^?+-]+)[?+-].*$/$1/;
-                        $replacement .= $val;
-                        last;
-                    }
-                }
-            }
-
-            # Custom text fields go from null to ""
-            # TODO: This probably prevents a value of "0" being added
-            # if it was previously empty
-            if( $changed_field =~ /^cf_/ ) {
-                if( !$changes->{$changed_field}[0] && 
-                    !$changes->{$changed_field}[1] ) {
-                    next;
-                }
-            }
-
-            # Get field name mappings
-            my $mappings = {};
-            if( $class eq "Bugzilla::Bug" ) {
-                $mappings = bug_reverse_interface();
-            }elsif( $class eq "Bugzilla::Product" ) {
-                $mappings = product_reverse_interface();
-            }elsif( $class eq "Bugzilla::Status" ) {
-                $mappings = status_reverse_interface();
-            }elsif( $class eq "Bugzilla::Flag" ) {
-                $mappings = flag_reverse_interface();
-            }elsif( $class eq "Bugzilla::FlagType" ) {
-                $mappings = flagtype_reverse_interface();
-            }elsif( $class eq "Bugzilla::Keyword" ) {
-                $mappings = keyword_reverse_interface();
-            }elsif( $class eq "Bugzilla::Attachment" ) {
-                $mappings = attachment_reverse_interface();
-            }elsif( $class eq "Bugzilla::Milestone" ) {
-                $mappings = milestone_reverse_interface();
-            }elsif( $class eq "Bugzilla::Comment" ) {
-                $mappings = comment_reverse_interface();
-            }elsif( $class eq "Bugzilla::Version" ) {
-                $mappings = version_reverse_interface();
-            }
-
-            # Map if we need to
-            if( $mappings && $mappings->{$replacement} ) {
-                $replacement = $mappings->{$replacement};
-            }
-
-            # Process the routing key the user wants to use
-            my $routingkey = Bugzilla->params->{'push-object-data-changed-routingkey'};
-            $routingkey =~ s/%type%/$type/g;
-            $routingkey =~ s/%field%/$replacement/g;
-
-            # Process the vhost further so we can put the field in it
-            $vhost =~ s/%field%/$replacement/g;
-
-            # Create the message in the proper format
-            my $msg = $self->msg_envelope($routingkey,
-                                          $timestamp,
-                                          $type,
-                                          $prepped_object,
-                                          $changes->{$changed_field}
-            );
-
-            # Send the message
-            $self->{'backend'}->publish({
-                exchange     => $exchange,
-                vhost        => $vhost,
-                message      => $json->encode($msg),
-                message_type => $msgtype,
-                routing_key  => $routingkey,
-                headers      => $headers
-            });
-        }
-    }
-
-    $self->{'backend'}->disconnect();
-
-}
-
-# Creates a message in the proper format
-sub msg_envelope {
-    my ($self, $routingkey, $timestamp, $type, $data, $changedata) = @_;
-
-    my $message = {};
-    
-    # Meta section
-    $message->{'_meta'} = {
-        routing_key => $routingkey,
-        time        => Bugzilla::Util::datetime_from($timestamp,'UTC') . '',
-    };
-
-    # Payload section
-    $message->{'payload'} = {
-        $type => $data,
-    };
-
-    # Add changes if we have any
-    if( $changedata ) {
-        $message->{'payload'}->{'change'} = $changedata;
-    }
-
-    return $message;
+    $modules->{'push'} = 'Bugzilla::Extension::Push::Params';
 }
 
 __PACKAGE__->NAME;

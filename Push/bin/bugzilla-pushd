@@ -1,0 +1,97 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+BEGIN {
+    use Cwd 'abs_path';
+    use File::Basename;
+    use lib abs_path(dirname(__FILE__) . '/../../../lib');
+    use lib abs_path(dirname(__FILE__) . '/../../..');
+    use Bugzilla;
+    Bugzilla->extensions;
+}
+
+use Bugzilla::Constants;
+
+use POE;
+use POE::Component::Client::AMQP;
+use Term::ANSIColor ':constants';
+use Net::AMQP::Common 'show_ascii';
+use Data::Dumper;
+
+my $amq;
+my $channel;
+my @messages;
+my $message_count = 0;
+
+@messages = (
+    'test message'
+);
+
+init(
+    Callbacks => {
+        FrameSent => [ sub {
+            my ($amq, $frame) = @_;
+            return unless ref($frame) eq 'Net::AMQP::Frame::Body';
+            $amq->Logger->info('Detected a Body frame being sent; current count: ' . ($message_count + 1));
+            if (++$message_count == scalar(@messages)) {
+                $amq->Logger->info('Disconnecting, all messages sent');
+                $poe_kernel->post($amq->{Alias}, 'server_disconnect');
+            }
+        } ],
+    },
+);
+
+my $queue = $channel->queue(
+    'message_queue',
+    {
+        auto_delete => 0,
+        exclusive   => 0,
+    },
+);
+
+for (my $i = 0; $i <= $#messages; $i++) {
+    my $message = $messages[$i];
+    $queue->publish($message);
+    $amq->Logger->info("Deferred publish '$message' to queue 'message_queue'");
+}
+
+$amq->run();
+
+sub init {
+    my (%args) = @_;
+    $args{Callbacks}{Reconnected} = [
+        sub {
+            my $amq = shift;
+            $amq->Logger->info('We have been reconnected');
+        },
+    ];
+
+    Net::AMQP::Protocol->load_xml_spec(bz_locations()->{extensionsdir} . '/Push/data/amqp0-8.xml');
+
+    $amq = POE::Component::Client::AMQP->create(
+        RemoteAddress => 'localhost',
+        Reconnect     => 1,
+        Debug => {
+            logic => 1,
+            frame_input => 1,
+            frame_output => 1,
+            frame_dumper => sub {
+                my $output = Dumper(shift);
+                chomp($output);
+                return "\n" . BLUE . $output . RESET;
+            },
+            raw_input => 0,
+            raw_output => 0,
+            raw_dumper => sub {
+                my $raw = shift;
+                my $output = "raw [".length($raw)."]: ".show_ascii($raw);
+                return "\n" . YELLOW . $output . RESET;
+            },
+        },
+        %args
+    );
+    $channel = $amq->channel();
+}
+
