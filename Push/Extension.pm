@@ -49,6 +49,9 @@ sub _object_modified {
     if (!$is_public) {
         # when a bug is changed from public to private, push a fake update with just
         # the group changes, so connectors can remove now-private bugs if required
+        # we can't use user->can_see_bug(old_bug) as that works on IDs, and the
+        # bug has already been updated, so for now assume that a bug without
+        # groups is public.
         if ($object->isa('Bugzilla::Bug') && !@{$args->{'old_bug'}->groups_in}) {
             # note the group changes only
             $changes = {
@@ -69,7 +72,7 @@ sub _object_modified {
         _split_flagtypes($changes);
     }
 
-    # TODO split group changes
+    # TODO split group changes?
 
     # send an individual message for each change
     foreach my $field_name (keys %$changes) {
