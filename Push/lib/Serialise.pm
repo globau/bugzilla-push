@@ -170,6 +170,7 @@ sub _bug {
         component        => $self->_component($bug->component_obj),
         creation_time    => _time($bug->creation_ts || $bug->delta_ts),
         flags            => (mapr { $self->_flag($_) } $bug->flags),
+        is_private       => _boolean(!is_public($bug)),
         keywords         => (mapr { _string($_->name) } $bug->keyword_objects),
         last_change_time => _time($bug->delta_ts),
         operating_system => _string($bug->op_sys),

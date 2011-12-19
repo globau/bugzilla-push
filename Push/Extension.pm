@@ -7,13 +7,18 @@ use warnings;
 
 use base qw(Bugzilla::Extension);
 
-use Bugzilla::Extension::Push::Util;
+use Bugzilla::Constants;
+use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::Serialise;
+use Bugzilla::Extension::Push::Util;
 
 use JSON qw(-convert_blessed_universally);
 use Scalar::Util 'blessed';
+use Storable 'dclone';
 
 our $VERSION = '1';
+
+use constant DEBUGGING => 1;
 
 #
 # deal with creation and updated events
@@ -25,7 +30,7 @@ sub _object_created {
     my $object = _get_object_from_args($args);
     return unless $object;
     return unless _should_push($object);
-    return unless is_public($object, 0);
+    return unless is_public($object);
 
     $self->_push('create', $object, { timestamp => $args->{'timestamp'} });
 }
@@ -39,12 +44,32 @@ sub _object_modified {
     my $object = _get_object_from_args($args);
     return unless $object;
     return unless _should_push($object);
-    return unless is_public($object, 1);
+    my $is_public = is_public($object);
+
+    if (!$is_public) {
+        # when a bug is changed from public to private, push a fake update with just
+        # the group changes, so connectors can remove now-private bugs if required
+        if ($object->isa('Bugzilla::Bug') && !@{$args->{'old_bug'}->groups_in}) {
+            # note the group changes only
+            $changes = {
+                'bug_group' => $changes->{'bug_group'}
+            };
+            # return the original bug object, so we don't leak any security
+            # sensitive information.  due to how $user->can_see_bug_works,
+            # is_public() on the old_bug will still return true
+            $object = $args->{'old_bug'};
+        } else {
+            # never push non-public objects
+            return;
+        }
+    }
 
     # make flagtypes changes easier to process
     if (exists $changes->{'flagtypes.name'}) {
         _split_flagtypes($changes);
     }
+
+    # TODO split group changes
 
     # send an individual message for each change
     foreach my $field_name (keys %$changes) {
@@ -131,6 +156,12 @@ sub _morph_flag_updates {
         $changes->{$name}->[1] = $value;
     }
 
+    foreach my $flag (keys %$changes) {
+        if ($changes->{$flag}->[0] eq $changes->{$flag}->[1]) {
+            delete $changes->{$flag};
+        }
+    }
+
     $args->{'changes'} = $changes;
 }
 
@@ -151,7 +182,7 @@ sub _morph_flag_update {
 }
 
 #
-# serialise and insert into the queue
+# serialise and insert into the table
 #
 
 sub _push {
@@ -161,8 +192,10 @@ sub _push {
     # serialise the object
     my ($rh_object, $name) = _serialiser()->object_to_hash($object);
     if (!$rh_object) {
-        # XXX this die should become a warn when out of dev
-        die "empty hash from serialiser ($message_type $object)\n";
+        if (DEBUGGING) {
+            die "empty hash from serialiser ($message_type $object)\n";
+        }
+        warn "empty hash from serialiser ($message_type $object)\n";
         return;
     }
     $rh->{$name} = $rh_object;
@@ -174,11 +207,16 @@ sub _push {
     $rh_event->{'target'} = $name;
     $rh->{'event'} = $rh_event;
 
-    # TODO insert into a table instead :)
-    open(FH, ">>data/pulse");
-    print FH $self->_to_json($rh);
-    print FH "\n\n";
-    close FH;
+    # insert into push table
+    Bugzilla::Extension::Push::Message->create({
+        payload => $self->_to_json($rh)
+    });
+
+    if (DEBUGGING) {
+        open(FH, '>>' . bz_locations()->{datadir} . '/push.log');
+        print FH $self->_to_json($rh) . "\n\n";
+        close FH;
+    }
 }
 
 #
@@ -201,17 +239,19 @@ sub _to_json {
     if (!exists $cache->{'json'}) {
         $json = JSON->new();
         $json->shrink(1);
-        $json->canonical(1); # debugging only XXX
+        $json->canonical(1) if DEBUGGING;
         $cache->{'json'} = $json;
     } else {
         $json = $cache->{'json'};
     }
-    return $json->pretty->encode($rh); # debugging only XXX
-    return $json->encode($rh);
+    
+    return DEBUGGING
+        ? $json->pretty->encode($rh)
+        : $json->encode($rh);
 }
 
 #
-# hooks
+# update/create hooks
 #
 
 sub object_end_of_create {
@@ -257,8 +297,62 @@ sub bug_end_of_update {
 
 sub flag_end_of_update {
     my ($self, $args) = @_;
+    return unless Bugzilla->params->{'push-enabled'} eq 'on';
     _morph_flag_updates($args);
     $self->_object_modified($args);
+}
+
+#
+# installation/config hooks
+#
+
+sub db_schema_abstract_schema {
+    my ($self, $args) = @_;
+    $args->{'schema'}->{'push'} = {
+        FIELDS => [
+            id => {
+                TYPE => 'MEDIUMSERIAL',
+                NOTNULL => 1,
+                PRIMARYKEY => 1,
+            },
+            push_ts => {
+                TYPE => 'DATETIME',
+                NOTNULL => 1,
+            },
+            payload => {
+                TYPE => 'LONGTEXT',
+                NOTNULL => 1,
+            },
+        ],
+    };
+    $args->{'schema'}->{'push_backlog'} = {
+        FIELDS => [
+            id => {
+                TYPE => 'MEDIUMSERIAL',
+                NOTNULL => 1,
+                PRIMARYKEY => 1,
+            },
+            push_ts => {
+                TYPE => 'DATETIME',
+                NOTNULL => 1,
+            },
+            payload => {
+                TYPE => 'LONGTEXT',
+                NOTNULL => 1,
+            },
+            connector => {
+                TYPE => 'TINYTEXT',
+                NOTNULL => 1,
+            },
+            attempt_ts => {
+                TYPE => 'DATETIME',
+            },
+            attempts => {
+                TYPE => 'INT2',
+                NOTNULL => 1,
+            },
+        ],
+    };
 }
 
 sub config_add_panels {

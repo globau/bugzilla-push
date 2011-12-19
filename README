@@ -103,8 +103,6 @@ flow
 - a daemon polls the table and calls on each connector to publish the message
 - as order is important, we need to manage transient failures
 
-bugzilla change --> 'push' table
-
 poe daemon : polling 'push' table
 
     foreach connector (connectors)

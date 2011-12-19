@@ -6,6 +6,7 @@ use strict;
 use warnings;
 
 use Bugzilla::Util 'datetime_from';
+use Data::Dumper;
 use Scalar::Util 'blessed';
 
 use base qw(Exporter);
@@ -85,7 +86,6 @@ sub hash_undef_to_empty {
 # debugging method
 sub debug_dump {
     my ($object) = @_;
-    use Data::Dumper;
     local $Data::Dumper::Sortkeys = 1;
     my $output = Dumper($object);
     $output =~ s/</&lt;/g;
