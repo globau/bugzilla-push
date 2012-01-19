@@ -1,3 +1,10 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# This Source Code Form is "Incompatible With Secondary Licenses", as
+# defined by the Mozilla Public License, v. 2.0.
+
 # boilerplate
 
 package Bugzilla::Extension::Push;
@@ -11,6 +18,7 @@ use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::Serialise;
 use Bugzilla::Extension::Push::Util;
+use Bugzilla::Install::Filesystem;
 
 use JSON qw(-convert_blessed_universally);
 use Scalar::Util 'blessed';
@@ -362,6 +370,18 @@ sub config_add_panels {
     my ($self, $args) = @_;
     my $modules = $args->{'panel_modules'};
     $modules->{'push'} = 'Bugzilla::Extension::Push::Params';
+}
+
+sub install_filesystem {
+    my ($self, $args) = @_;
+    my $files = $args->{'files'};
+
+    my $extensionsdir = bz_locations()->{'extensionsdir'};
+    my $scriptname = $extensionsdir . "/Push/bin/bugzilla-pushd.pl";
+
+    $files->{$scriptname} = {
+        perms => Bugzilla::Install::Filesystem::WS_EXECUTE
+    };
 }
 
 __PACKAGE__->NAME;

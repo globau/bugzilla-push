@@ -1,4 +1,9 @@
-# boilerplate
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+#
+# This Source Code Form is "Incompatible With Secondary Licenses", as
+# defined by the Mozilla Public License, v. 2.0.
 
 package Bugzilla::Extension::Push::Daemon;
 
@@ -6,13 +11,11 @@ use strict;
 use warnings;
 
 use Bugzilla::Constants;
-use File::Basename;
+use Bugzilla::Extension::Push::Push;
 use Daemon::Generic;
+use File::Basename;
 use Pod::Usage;
 use POE;
-
-use Bugzilla::Extension::Push::Constants;
-use Bugzilla::Extension::Push::Connector::Pulse;
 
 sub start {
     newdaemon();
@@ -87,32 +90,19 @@ sub gd_setup_signals {
 sub gd_run {
     my $self = shift;
 
-    my @connectors = (
-        Bugzilla::Extension::Push::Connector::Pulse->new(),
-    );
-
+    my $push = Bugzilla::Extension::Push::Push->new();
     POE::Session->create(
-        inline_states => {
-            _start => sub {
-                $_[KERNEL]->delay(push => 5);
-            },
-            push => sub {
-                print "push at " . time() . "\n";
-                foreach my $connector (@connectors) {
-                    my $result = $connector->send('hello world');
-                    if ($result == PUSH_RESULT_OK) {
-                        print "ok\n";
-                    } elsif ($result == PUSH_RESULT_TRANSIENT) {
-                        print "transient failure\n";
-                    } elsif ($result == PUSH_RESULT_ERROR) {
-                        print "error\n";
-                    }
-                }
-                $_[KERNEL]->delay(push => 10);
-            },
-        },
+        package_states => [ 'Bugzilla::Extension::Push::Daemon' => ['_start'] ],
+        object_states => [ $push => ['push'] ],
+        heap => { push => $push },
     );
     $poe_kernel->run();
+}
+
+sub _start {
+    # initiate a push soon after startup
+    $_[KERNEL]->delay(push => 5);
+    return;
 }
 
 1;
