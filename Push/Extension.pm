@@ -5,8 +5,6 @@
 # This Source Code Form is "Incompatible With Secondary Licenses", as
 # defined by the Mozilla Public License, v. 2.0.
 
-# boilerplate
-
 package Bugzilla::Extension::Push;
 
 use strict;
@@ -343,6 +341,10 @@ sub db_schema_abstract_schema {
                 NOTNULL => 1,
                 PRIMARYKEY => 1,
             },
+            message_id => {
+                TYPE => 'INT3',
+                NOTNULL => 1,
+            },
             push_ts => {
                 TYPE => 'DATETIME',
                 NOTNULL => 1,
@@ -364,6 +366,35 @@ sub db_schema_abstract_schema {
             },
         ],
     };
+    $args->{'schema'}->{'push_log'} = {
+        FIELDS => [
+            id => {
+                TYPE => 'MEDIUMSERIAL',
+                NOTNULL => 1,
+                PRIMARYKEY => 1,
+            },
+            message_id => {
+                TYPE => 'INT3',
+                NOTNULL => 1,
+            },
+            push_ts => {
+                TYPE => 'DATETIME',
+                NOTNULL => 1,
+            },
+            processed_ts => {
+                TYPE => 'DATETIME',
+                NOTNULL => 1,
+            },
+            result => {
+                TYPE => 'INT1',
+                NOTNULL => 1,
+            },
+            error => {
+                TYPE => 'MEDIUMTEXT',
+            },
+        ],
+    };
+    # XXX indexes
 }
 
 sub config_add_panels {

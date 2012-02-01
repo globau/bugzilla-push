@@ -186,7 +186,7 @@ sub subscribe {
             %$user_opts,
         );
 
-        # TODO: if user sets $opts{nowait}, we can't do the synchronous_callback or even know the consumer_tag.
+        # if user sets $opts{nowait}, we can't do the synchronous_callback or even know the consumer_tag.
 
         $poe_kernel->post($self->{channel}{Alias}, server_send => 
             Net::AMQP::Frame::Method->new(

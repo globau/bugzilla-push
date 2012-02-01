@@ -12,6 +12,7 @@ use warnings;
 
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Push;
+use Bugzilla::Extension::Push::Logger;
 use Daemon::Generic;
 use File::Basename;
 use Pod::Usage;
@@ -90,11 +91,22 @@ sub gd_setup_signals {
 sub gd_run {
     my $self = shift;
 
-    my $push = Bugzilla::Extension::Push::Push->new();
+    my $logger = Bugzilla::Extension::Push::Logger->new();
+    $logger->{debug} = $self->{debug};
+
+    my $push = Bugzilla::Extension::Push::Push->new(
+        Logger => $logger
+    );
+
     POE::Session->create(
         package_states => [ 'Bugzilla::Extension::Push::Daemon' => ['_start'] ],
         object_states => [ $push => ['push'] ],
-        heap => { push => $push },
+        heap => {
+            push => $push,
+            logger => $logger,
+            debug => $self->{debug},
+            is_first_push => 1,
+        },
     );
     $poe_kernel->run();
 }

@@ -14,6 +14,7 @@ use base 'Bugzilla::Object';
 
 use Bugzilla;
 use Bugzilla::Error;
+use Bugzilla::Util;
 
 #
 # initialisation
@@ -22,9 +23,14 @@ use Bugzilla::Error;
 use constant DB_TABLE => 'push_backlog';
 use constant DB_COLUMNS => qw(
     id
+    message_id
     push_ts
     payload
     connector
+    attempt_ts
+    attempts
+);
+use constant UPDATE_COLUMNS => qw(
     attempt_ts
     attempts
 );
@@ -32,6 +38,7 @@ use constant LIST_ORDER => 'push_ts';
 use constant VALIDATORS => {
     payload   => \&_check_payload,
     connector => \&_check_connector,
+    attempts  => \&_check_attempts,
 };
 
 #
@@ -40,25 +47,46 @@ use constant VALIDATORS => {
 
 sub create_from_message {
     my ($class, $message, $connector) = @_;
-    my $now = Bugzilla->dbh->selectrow_array('SELECT NOW()');
     my $self = $class->create({
+        message_id => $message->id,
         push_ts => $message->push_ts,
         payload => $message->payload,
         connector => $connector->name,
-        attempt_ts => $now,
-        attempts => 1,
+        attempt_ts => undef,
+        attempts => 0,
     });
+    return $self;
 }
 
 #
 # accessors
 #
 
+sub message_id { return $_[0]->{'message_id'}  }
 sub push_ts    { return $_[0]->{'push_ts'};    }
 sub payload    { return $_[0]->{'payload'};    }
 sub connector  { return $_[0]->{'connector'};  }
 sub attempt_ts { return $_[0]->{'attempt_ts'}; }
 sub attempts   { return $_[0]->{'attempts'};   }
+
+sub attempt_time {
+    my ($self) = @_;
+    if (!exists $self->{'attempt_time'}) {
+        $self->{'attempt_time'} = datetime_from($self->attempt_ts)->epoch;
+    }
+    return $self->{'attempt_time'};
+}
+
+#
+# mutators
+#
+
+sub inc_attempts {
+    my ($self) = @_;
+    $self->{attempt_ts} = Bugzilla->dbh->selectrow_array('SELECT NOW()');
+    $self->{attempts} = $self->{attempts} + 1;
+    $self->update;
+}
 
 #
 # validators
@@ -74,6 +102,23 @@ sub _check_connector {
     my ($invocant, $value) = @_;
     # XXX check the connector
     return $value;
+}
+
+sub _check_attempts {
+    my ($invocant, $value) = @_;
+    return $value || 0;
+}
+
+#
+# methods
+#
+
+sub should_retry {
+    my ($self) = @_;
+    return 1 unless $self->attempts;
+    my $backoff_seconds = $self->attempts <= 4 ? 5 ** $self->attempts : 15 * 60;
+    my $now = (time);
+    return $now - $self->attempt_time >= $backoff_seconds;
 }
 
 1;

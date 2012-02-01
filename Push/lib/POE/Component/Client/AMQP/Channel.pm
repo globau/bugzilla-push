@@ -225,7 +225,7 @@ sub queue {
         %$user_opts,
     );
 
-    # TODO: if user sets $opts{nowait}, we can't do the synchronous_callback below
+    # if user sets $opts{nowait}, we can't do the synchronous_callback below
 
     my $queue = POE::Component::Client::AMQP::Queue->create(
         name => $name,
@@ -314,7 +314,7 @@ sub server_input {
     if ($frame->isa('Net::AMQP::Frame::Method')) {
         my $method_frame = $frame->method_frame;
 
-        # TODO: There are probably other methods that have content following them
+        # There are probably other methods that have content following them
         if ($method_frame->isa('Net::AMQP::Protocol::Basic::Deliver')
             || $method_frame->isa('Net::AMQP::Protocol::Basic::Return')) {
             # Start collecting content

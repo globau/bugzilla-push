@@ -17,12 +17,12 @@ use Bugzilla::Extension::Push::BacklogMessage;
 use POE;
 
 sub new {
-    my ($class) = @_;
+    my ($class, %args) = @_;
     my $self = {};
     bless($self, $class);
 
     $self->{connectors} = [
-        Bugzilla::Extension::Push::Connector::Pulse->new(),
+        Bugzilla::Extension::Push::Connector::Pulse->new(%args),
     ];
 
     return $self;
@@ -30,40 +30,34 @@ sub new {
 
 sub push {
     my $self = $_[HEAP]->{push};
+    my $logger = $_[HEAP]->{logger};
+    my $is_first_push = $_[HEAP]->{is_first_push};
 
-    print "check at " . (scalar localtime) . "\n";
+    $logger->debug("polling");
 
     # process each message
     while(my $message = $self->get_oldest_message) {
 
         foreach my $connector (@{$self->{connectors}}) {
-            printf "pushing to %s\n", $connector->name;
+            $logger->debug("pushing to " . $connector->name);
 
             my $is_backlogged = $connector->backlog_count;
 
             if (!$is_backlogged) {
                 # connector isn't backlogged, immediate send
-                print "immediate send\n";
-                my $result = $connector->send($message);
+                $logger->debug("immediate send");
+                my($result, $error) = $connector->send($message);
+                $logger->result($connector, $message, $result, $error);
 
                 if ($result == PUSH_RESULT_TRANSIENT) {
-                    # TODO log transient failure
-                    print "transient failure\n";
                     $is_backlogged = 1;
-
-                } elsif ($result == PUSH_RESULT_ERROR) {
-                    # TODO log failure
-                    print "error\n";
-
-                } else {
-                    # TODO log success
-                    print "ok\n";
                 }
             }
 
             # if the connector is backlogged, push to the backlog queue
             if ($is_backlogged) {
-                Bugzilla::Extension::Push::BacklogMessage->create_from_message($message, $connector);
+                my $backlog = Bugzilla::Extension::Push::BacklogMessage->create_from_message($message, $connector);
+                $backlog->inc_attempts;
             }
         }
 
@@ -73,42 +67,40 @@ sub push {
 
     # process backlog
     foreach my $connector (@{$self->{connectors}}) {
-        while(my $message = $connector->get_oldest_backlog()) {
-            printf "processing backlog for %s\n", $connector->name;
-            my $result = $connector->send($message);
+        my $message = $connector->get_oldest_backlog();
+        next unless $message;
+        next if !$is_first_push && !$message->should_retry;
+
+        $logger->debug("processing backlog for " . $connector->name);
+        while ($message) {
+            my($result, $error) = $connector->send($message);
+            $message->inc_attempts;
+            $logger->result($connector, $message, $result, $error);
 
             if ($result == PUSH_RESULT_TRANSIENT) {
-                # TODO log transient failure
-                print "transient failure, still broken\n";
                 # connector is still down, stop trying
                 last;
-
-            } elsif ($result == PUSH_RESULT_ERROR) {
-                # TODO log failure
-                print "error\n";
-
-            } else {
-                # TODO log success
-                print "ok\n";
             }
 
             # message was processed
             $message->remove_from_db();
+            
+            $message = $connector->get_oldest_backlog();
         }
     }
 
+    $_[HEAP]->{is_first_push} = 0;
     $_[KERNEL]->delay(push => POLL_INTERVAL_SECONDS);
 }
 
 sub get_oldest_message {
     my ($self) = @_;
     my $dbh = Bugzilla->dbh;
-    # XXX use bz's generic sql limiter
     my ($id, $push_ts, $payload) = $dbh->selectrow_array("
         SELECT id, push_ts, payload
           FROM push
-         ORDER BY push_ts
-         LIMIT 1") or return;
+         ORDER BY push_ts " .
+        $dbh->sql_limit(1)) or return;
     my $message = Bugzilla::Extension::Push::Message->new({
         id => $id,
         push_ts => $push_ts,

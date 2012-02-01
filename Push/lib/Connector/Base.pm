@@ -14,10 +14,11 @@ use Bugzilla;
 use Bugzilla::Extension::Push::BacklogMessage;
 
 sub new {
-    my $class = shift;
+    my ($class, %args) = @_;
     my $self = {};
     bless($self, $class);
     ($self->{name}) = $class =~ /^.+:(.+)$/;
+    $self->{logger} = $args{Logger};
     $self->init();
     return $self;
 }
@@ -51,17 +52,17 @@ sub backlog_count {
 sub get_oldest_backlog {
     my ($self) = @_;
     my $dbh = Bugzilla->dbh;
-    # XXX use bz's generic sql limiter
-    my ($id, $push_ts, $payload, $attempt_ts, $attempts) = $dbh->selectrow_array("
-        SELECT id, push_ts, payload, attempt_ts, attempts
+    my ($id, $message_id, $push_ts, $payload, $attempt_ts, $attempts) = $dbh->selectrow_array("
+        SELECT id, message_id, push_ts, payload, attempt_ts, attempts
           FROM push_backlog
          WHERE connector = ?
-         ORDER BY push_ts
-         LIMIT 1",
+         ORDER BY push_ts " .
+         $dbh->sql_limit(1),
         undef,
         $self->name) or return;
     my $message = Bugzilla::Extension::Push::BacklogMessage->new({
         id => $id,
+        message_id => $message_id,
         push_ts => $push_ts,
         payload => $payload,
         connector => $self->name,

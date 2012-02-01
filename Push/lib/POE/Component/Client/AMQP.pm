@@ -788,7 +788,7 @@ sub tcp_server_input {
                                 information => 'http://code.xmission.com/',
                                 version     => $VERSION,
                             },
-                            mechanism => 'AMQPLAIN', # TODO - ensure this is in $method_frame{mechanisms}
+                            mechanism => 'AMQPLAIN', # ensure this is in $method_frame{mechanisms}
                             response => { LOGIN => $self->{Username}, PASSWORD => $self->{Password} },
                             locale => 'en_US',
                         ),

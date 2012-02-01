@@ -30,19 +30,25 @@ sub send {
     my ($self, $message) = @_;
 
     if (!$self->{amq}->{is_started}) {
-        return PUSH_RESULT_TRANSIENT;
+        return (PUSH_RESULT_TRANSIENT, 'Not connected to AMQP server');
     }
 
-    # XXX need to set timestamp, and other message data
-    my $channel = $self->{amq}->channel();
-    my $queue = $channel->queue(
-        'message_queue',
-        {
-            auto_delete => 0,
-            exclusive   => 0,
-        },
-    );
-    $queue->publish($message->payload);
+    eval {
+        # XXX need to set timestamp, and other message data
+        my $channel = $self->{amq}->channel();
+        my $queue = $channel->queue(
+            'message_queue',
+            {
+                auto_delete => 0,
+                exclusive   => 0,
+            },
+        );
+        $queue->publish($message->payload);
+    };
+    if ($@) {
+        return (PUSH_RESULT_TRANSIENT, "$@");
+    }
+    return PUSH_RESULT_OK;
 }
 
 sub _connect {
@@ -51,6 +57,7 @@ sub _connect {
     $self->{amq} = POE::Component::Client::AMQP->create(
         RemoteAddress => 'mac',
         Reconnect     => 1,
+        Logger        => $self->{logger},
         Debug         => {
             logic => 0,
             frame_input => 0,
