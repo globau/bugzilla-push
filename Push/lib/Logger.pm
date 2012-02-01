@@ -42,7 +42,22 @@ sub result {
 
     $error ||= '';
 
-    $self->info($connector->name . ": Message #" . $message->id . ": $result $error");
+    $self->info(sprintf(
+        "%s: Message #%s: %s %s",
+        $connector->name,
+        $message->message_id,
+        push_result_to_string($result),
+        $error
+    ));
+
+    Bugzilla::Extension::Push::LogEntry->create({
+        message_id   => $message->message_id,
+        connector    => $connector->name,
+        push_ts      => $message->push_ts,
+        processed_ts => Bugzilla->dbh->selectrow_array('SELECT NOW()'),
+        result       => $result,
+        error        => $error,
+    });
 }
 
 1;

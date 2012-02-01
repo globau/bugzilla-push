@@ -14,6 +14,7 @@ our @EXPORT = qw(
     PUSH_RESULT_OK
     PUSH_RESULT_TRANSIENT
     PUSH_RESULT_ERROR
+    push_result_to_string
 
     POLL_INTERVAL_SECONDS
 );
@@ -21,6 +22,13 @@ our @EXPORT = qw(
 use constant PUSH_RESULT_OK => 1;
 use constant PUSH_RESULT_TRANSIENT => 2;
 use constant PUSH_RESULT_ERROR => 3;
+
+sub push_result_to_string {
+    my ($result) = @_;
+    return 'OK'              if $result == PUSH_RESULT_OK;
+    return 'TRANSIENT-ERROR' if $result == PUSH_RESULT_TRANSIENT;
+    return 'FATAL-ERROR'     if $result == PUSH_RESULT_ERROR;
+}
 
 use constant POLL_INTERVAL_SECONDS => 5;
 

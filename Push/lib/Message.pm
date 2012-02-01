@@ -35,8 +35,9 @@ use constant VALIDATORS => {
 # accessors
 #
 
-sub push_ts { return $_[0]->{'push_ts'}; }
-sub payload { return $_[0]->{'payload'}; }
+sub push_ts    { return $_[0]->{'push_ts'}; }
+sub payload    { return $_[0]->{'payload'}; }
+sub message_id { return $_[0]->id;          }
 
 #
 # validators

@@ -23,21 +23,35 @@ use constant DB_TABLE => 'push_log';
 use constant DB_COLUMNS => qw(
     id
     message_id
+    connector
     push_ts
     processed_ts
     result
     error
 );
+use constant VALIDATORS => {
+    error => \&_check_error,
+};
 
 #
 # accessors
 #
 
 sub message_id   { return $_[0]->{'message_id'};   }
+sub connector    { return $_[0]->{'connector'};    }
 sub push_ts      { return $_[0]->{'push_ts'};      }
 sub processed_ts { return $_[0]->{'processed_ts'}; }
 sub result       { return $_[0]->{'result'};       }
 sub error        { return $_[0]->{'error'};        }
+
+#
+# validators
+#
+
+sub _check_error {
+    my ($invocant, $value) = @_;
+    return $value eq '' ? undef : $value;
+}
 
 1;
 
