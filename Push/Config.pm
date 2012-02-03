@@ -23,8 +23,8 @@ use constant REQUIRED_MODULES => [
         version => '2.0'
     },
     {
-        package => 'Net-AMQP',
-        module  => 'Net::AMQP',
+        package => 'Net--RabbitMQ',
+        module  => 'Net::RabbitMQ',
         version => '0'
     },
     {

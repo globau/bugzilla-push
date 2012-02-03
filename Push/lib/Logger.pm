@@ -14,8 +14,10 @@ use Bugzilla::Extension::Push::Constants;
 use Bugzilla::Extension::Push::LogEntry;
 
 sub new {
-    my ($class, %self) = @_;
-    return bless \%self, $class;
+    my ($class) = @_;
+    my $self = {};
+    bless($self, $class);
+    return $self;
 }
 
 sub info  { shift->_log_it('INFO', @_) }
@@ -31,15 +33,6 @@ sub _log_it {
 
 sub result {
     my ($self, $connector, $message, $result, $error) = @_;
-
-    if ($result == PUSH_RESULT_OK) {
-        $result = 'OK';
-    } elsif ($result == PUSH_RESULT_TRANSIENT) {
-        $result = 'TRANSIENT-ERROR';
-    } elsif ($result == PUSH_RESULT_ERROR) {
-        $result = 'FATAL-ERROR';
-    }
-
     $error ||= '';
 
     $self->info(sprintf(

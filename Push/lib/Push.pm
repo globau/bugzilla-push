@@ -11,26 +11,22 @@ use strict;
 use warnings;
 
 use Bugzilla::Extension::Push::Constants;
-use Bugzilla::Extension::Push::Connector::Pulse;
+use Bugzilla::Extension::Push::Connectors;
 use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::BacklogMessage;
 use POE;
 
 sub new {
-    my ($class, %args) = @_;
+    my ($class) = @_;
     my $self = {};
     bless($self, $class);
-
-    $self->{connectors} = [
-        Bugzilla::Extension::Push::Connector::Pulse->new(%args),
-    ];
-
     return $self;
 }
 
 sub push {
     my $self = $_[HEAP]->{push};
     my $logger = $_[HEAP]->{logger};
+    my $connectors = $_[HEAP]->{connectors};
     my $is_first_push = $_[HEAP]->{is_first_push};
 
     $logger->debug("polling");
@@ -38,7 +34,7 @@ sub push {
     # process each message
     while(my $message = $self->get_oldest_message) {
 
-        foreach my $connector (@{$self->{connectors}}) {
+        foreach my $connector ($connectors->list) {
             $logger->debug("pushing to " . $connector->name);
 
             my $is_backlogged = $connector->backlog_count;
@@ -66,7 +62,7 @@ sub push {
     }
 
     # process backlog
-    foreach my $connector (@{$self->{connectors}}) {
+    foreach my $connector ($connectors->list) {
         my $message = $connector->get_oldest_backlog();
         next unless $message;
         next if !$is_first_push && !$message->should_retry;

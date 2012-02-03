@@ -20,6 +20,9 @@ sub new {
     ($self->{name}) = $class =~ /^.+:(.+)$/;
     $self->{logger} = $args{Logger};
     $self->init();
+    if ($args{Start}) {
+        $self->start();
+    }
     return $self;
 }
 
@@ -29,6 +32,11 @@ sub name {
 }
 
 sub init {
+    my ($self) = @_;
+    # abstract
+}
+
+sub start {
     my ($self) = @_;
     # abstract
 }

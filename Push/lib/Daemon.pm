@@ -94,9 +94,11 @@ sub gd_run {
     my $logger = Bugzilla::Extension::Push::Logger->new();
     $logger->{debug} = $self->{debug};
 
-    my $push = Bugzilla::Extension::Push::Push->new(
-        Logger => $logger
+    my $connectors = Bugzilla::Extension::Push::Connectors->new(
+        Logger => $logger,
     );
+
+    my $push = Bugzilla::Extension::Push::Push->new();
 
     POE::Session->create(
         package_states => [ 'Bugzilla::Extension::Push::Daemon' => ['_start'] ],
@@ -104,6 +106,7 @@ sub gd_run {
         heap => {
             push => $push,
             logger => $logger,
+            connectors => $connectors,
             debug => $self->{debug},
             is_first_push => 1,
         },
@@ -112,8 +115,10 @@ sub gd_run {
 }
 
 sub _start {
+    my $connectors = $_[HEAP]->{connectors};
+    $connectors->start();
     # initiate a push soon after startup
-    $_[KERNEL]->delay(push => 5);
+    $_[KERNEL]->delay(push => 1);
     return;
 }
 

@@ -14,68 +14,79 @@ use base 'Bugzilla::Extension::Push::Connector::Base';
 
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Constants;
-use Data::Dumper;
-use Net::AMQP::Common 'show_ascii';
-use POE;
-use POE::Component::Client::AMQP;
-use Term::ANSIColor ':constants';
+use Net::RabbitMQ;
 
 sub init {
     my ($self) = @_;
-    Net::AMQP::Protocol->load_xml_spec(bz_locations()->{extensionsdir} . '/Push/data/amqp0-8.xml');
-    $self->_connect();
+    $self->{mq} = 0;
+    $self->{channel} = 1;
+    $self->{queue} = 'test.q';
+    $self->{exchange} = 'amq.direct';
+    $self->{routing_key} = 'foobar';
 }
 
 sub send {
     my ($self, $message) = @_;
 
-    if (!$self->{amq}->{is_started}) {
-        return (PUSH_RESULT_TRANSIENT, 'Not connected to AMQP server');
+    # verify existing connection
+    if ($self->{mq}) {
+        eval {
+            $self->{logger}->debug('Pulse: Opening channel ' . $self->{channel});
+            $self->{mq}->channel_open($self->{channel});
+        };
+        if ($@) {
+            $self->{logger}->debug('Pulse: ' . $self->_format_error($@));
+            $self->{mq} = 0;
+        }
     }
 
+    # connect if required
+    if (!$self->{mq}) {
+        eval {
+            $self->{logger}->debug('Pulse: Connecting to RabbitMQ');
+            my $mq = Net::RabbitMQ->new();
+            $mq->connect('mac', { user => 'guest', password => 'guest' });
+            $self->{mq} = $mq;
+            $self->{logger}->debug('Pulse: Opening channel ' . $self->{channel});
+            $self->{mq}->channel_open($self->{channel});
+        };
+        if ($@) {
+            $self->{mq} = 0;
+            return (PUSH_RESULT_TRANSIENT, $self->_format_error($@));
+        }
+    }
+
+    # send message
     eval {
-        # XXX need to set timestamp, and other message data
-        my $channel = $self->{amq}->channel();
-        my $queue = $channel->queue(
-            'message_queue',
+        $self->{logger}->debug('Pulse: Publishing message');
+        $self->{mq}->publish(
+            $self->{channel},
+            $self->{queue},
+            $message->payload,
             {
-                auto_delete => 0,
-                exclusive   => 0,
+                exchange => $self->{exchange},
+            },
+            {
+                content_type => 'text/plain',
+                content_encoding => '8bit',
             },
         );
-        $queue->publish($message->payload);
+        $self->{logger}->debug('Pulse: Closing channel ' . $self->{channel});
+        $self->{mq}->channel_close($self->{channel});
     };
     if ($@) {
-        return (PUSH_RESULT_TRANSIENT, "$@");
+        return (PUSH_RESULT_TRANSIENT, $self->_format_error($@));
     }
+
     return PUSH_RESULT_OK;
 }
 
-sub _connect {
-    my $self = shift;
-
-    $self->{amq} = POE::Component::Client::AMQP->create(
-        RemoteAddress => 'mac',
-        Reconnect     => 1,
-        Logger        => $self->{logger},
-        Debug         => {
-            logic => 0,
-            frame_input => 0,
-            frame_output => 0,
-            frame_dumper => sub {
-                my $output = Dumper(shift);
-                chomp($output);
-                return "\n" . BLUE . $output . RESET;
-            },
-            raw_input => 0,
-            raw_output => 0,
-            raw_dumper => sub {
-                my $raw = shift;
-                my $output = "raw [".length($raw)."]: ".show_ascii($raw);
-                return "\n" . YELLOW . $output . RESET;
-            },
-        }
-    );
+sub _format_error {
+    my ($self, $error) = @_;
+    my $path = bz_locations->{'extensionsdir'};
+    $error = $1 if $error =~ /^(.+?) at \Q$path/s;
+    $error =~ s/(^\s+|\s+$)//g;
+    return $error;
 }
 
 1;
