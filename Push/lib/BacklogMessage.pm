@@ -100,25 +100,13 @@ sub _check_payload {
 
 sub _check_connector {
     my ($invocant, $value) = @_;
-    # XXX check the connector
+    Bugzilla->push_ext->connectors->exists($value) || ThrowCodeError('push_invalid_connector');
     return $value;
 }
 
 sub _check_attempts {
     my ($invocant, $value) = @_;
     return $value || 0;
-}
-
-#
-# methods
-#
-
-sub should_retry {
-    my ($self) = @_;
-    return 1 unless $self->attempts;
-    my $backoff_seconds = $self->attempts <= 4 ? 5 ** $self->attempts : 15 * 60;
-    my $now = (time);
-    return $now - $self->attempt_time >= $backoff_seconds;
 }
 
 1;

@@ -14,26 +14,54 @@ use Bugzilla::Extension::Push::Constants;
 use Bugzilla::Extension::Push::Connectors;
 use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::BacklogMessage;
-use POE;
 
-sub new {
+BEGIN {
+    *Bugzilla::push_ext = \&_get_instance;
+}   
+
+my $_instance;
+sub _get_instance {
+    if (!$_instance) {
+        $_instance = Bugzilla::Extension::Push::Push->_new();
+    }
+    return $_instance;
+}
+
+sub _new {
     my ($class) = @_;
     my $self = {};
     bless($self, $class);
+
+    $self->logger(Bugzilla::Extension::Push::Logger->new());
+    $self->connectors(Bugzilla::Extension::Push::Connectors->new());
+
     return $self;
 }
 
+sub start {
+    my ($self) = @_;
+    my $connectors = $self->connectors;
+    $connectors->start();
+
+    foreach my $connector ($connectors->list) {
+        $connector->reset_backoff();
+    }
+
+    while(1) {
+        $self->push();
+        sleep(POLL_INTERVAL_SECONDS);
+    }
+}
+
 sub push {
-    my $self = $_[HEAP]->{push};
-    my $logger = $_[HEAP]->{logger};
-    my $connectors = $_[HEAP]->{connectors};
-    my $is_first_push = $_[HEAP]->{is_first_push};
+    my ($self) = @_;
+    my $logger = $self->logger;
+    my $connectors = $self->connectors;
 
     $logger->debug("polling");
 
     # process each message
     while(my $message = $self->get_oldest_message) {
-
         foreach my $connector ($connectors->list) {
             $logger->debug("pushing to " . $connector->name);
 
@@ -65,7 +93,6 @@ sub push {
     foreach my $connector ($connectors->list) {
         my $message = $connector->get_oldest_backlog();
         next unless $message;
-        next if !$is_first_push && !$message->should_retry;
 
         $logger->debug("processing backlog for " . $connector->name);
         while ($message) {
@@ -75,6 +102,7 @@ sub push {
 
             if ($result == PUSH_RESULT_TRANSIENT) {
                 # connector is still down, stop trying
+                $connector->inc_backoff();
                 last;
             }
 
@@ -84,9 +112,6 @@ sub push {
             $message = $connector->get_oldest_backlog();
         }
     }
-
-    $_[HEAP]->{is_first_push} = 0;
-    $_[KERNEL]->delay(push => POLL_INTERVAL_SECONDS);
 }
 
 sub get_oldest_message {
@@ -105,4 +130,16 @@ sub get_oldest_message {
     return $message;
 }
     
+sub logger {
+    my ($self, $value) = @_;
+    $self->{logger} = $value if $value;
+    return $self->{logger};
+}
+
+sub connectors {
+    my ($self, $value) = @_;
+    $self->{connectors} = $value if $value;
+    return $self->{connectors};
+}
+
 1;

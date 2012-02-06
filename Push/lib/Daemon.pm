@@ -16,7 +16,6 @@ use Bugzilla::Extension::Push::Logger;
 use Daemon::Generic;
 use File::Basename;
 use Pod::Usage;
-use POE;
 
 sub start {
     newdaemon();
@@ -84,43 +83,11 @@ sub gd_setup_signals {
     $SIG{TERM} = sub { $self->gd_quit_event(); }
 }
 
-#
-# POE
-#
-
 sub gd_run {
     my $self = shift;
-
-    my $logger = Bugzilla::Extension::Push::Logger->new();
-    $logger->{debug} = $self->{debug};
-
-    my $connectors = Bugzilla::Extension::Push::Connectors->new(
-        Logger => $logger,
-    );
-
-    my $push = Bugzilla::Extension::Push::Push->new();
-
-    POE::Session->create(
-        package_states => [ 'Bugzilla::Extension::Push::Daemon' => ['_start'] ],
-        object_states => [ $push => ['push'] ],
-        heap => {
-            push => $push,
-            logger => $logger,
-            connectors => $connectors,
-            debug => $self->{debug},
-            is_first_push => 1,
-        },
-    );
-    $poe_kernel->run();
-}
-
-sub _start {
-    my $connectors = $_[HEAP]->{connectors};
-    $connectors->start();
-    # initiate a push soon after startup
-    $_[KERNEL]->delay(push => 1);
-    return;
+    my $push = Bugzilla->push_ext;
+    $push->logger->{debug} = $self->{debug};
+    $push->start();
 }
 
 1;
-

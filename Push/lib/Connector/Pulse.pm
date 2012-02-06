@@ -27,15 +27,16 @@ sub init {
 
 sub send {
     my ($self, $message) = @_;
+    my $logger = Bugzilla->push_ext->logger;
 
     # verify existing connection
     if ($self->{mq}) {
         eval {
-            $self->{logger}->debug('Pulse: Opening channel ' . $self->{channel});
+            $logger->debug('Pulse: Opening channel ' . $self->{channel});
             $self->{mq}->channel_open($self->{channel});
         };
         if ($@) {
-            $self->{logger}->debug('Pulse: ' . $self->_format_error($@));
+            $logger->debug('Pulse: ' . $self->_format_error($@));
             $self->{mq} = 0;
         }
     }
@@ -43,11 +44,11 @@ sub send {
     # connect if required
     if (!$self->{mq}) {
         eval {
-            $self->{logger}->debug('Pulse: Connecting to RabbitMQ');
+            $logger->debug('Pulse: Connecting to RabbitMQ');
             my $mq = Net::RabbitMQ->new();
             $mq->connect('mac', { user => 'guest', password => 'guest' });
             $self->{mq} = $mq;
-            $self->{logger}->debug('Pulse: Opening channel ' . $self->{channel});
+            $logger->debug('Pulse: Opening channel ' . $self->{channel});
             $self->{mq}->channel_open($self->{channel});
         };
         if ($@) {
@@ -58,7 +59,7 @@ sub send {
 
     # send message
     eval {
-        $self->{logger}->debug('Pulse: Publishing message');
+        $logger->debug('Pulse: Publishing message');
         $self->{mq}->publish(
             $self->{channel},
             $self->{queue},
@@ -71,7 +72,7 @@ sub send {
                 content_encoding => '8bit',
             },
         );
-        $self->{logger}->debug('Pulse: Closing channel ' . $self->{channel});
+        $logger->debug('Pulse: Closing channel ' . $self->{channel});
         $self->{mq}->channel_close($self->{channel});
     };
     if ($@) {

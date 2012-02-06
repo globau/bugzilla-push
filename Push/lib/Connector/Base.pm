@@ -12,13 +12,13 @@ use warnings;
 
 use Bugzilla;
 use Bugzilla::Extension::Push::BacklogMessage;
+use Bugzilla::Extension::Push::Backoff;
 
 sub new {
     my ($class, %args) = @_;
     my $self = {};
     bless($self, $class);
     ($self->{name}) = $class =~ /^.+:(.+)$/;
-    $self->{logger} = $args{Logger};
     $self->init();
     if ($args{Start}) {
         $self->start();
@@ -61,9 +61,14 @@ sub get_oldest_backlog {
     my ($self) = @_;
     my $dbh = Bugzilla->dbh;
     my ($id, $message_id, $push_ts, $payload, $attempt_ts, $attempts) = $dbh->selectrow_array("
-        SELECT id, message_id, push_ts, payload, attempt_ts, attempts
-          FROM push_backlog
-         WHERE connector = ?
+        SELECT log.id, message_id, push_ts, payload, attempt_ts, log.attempts
+          FROM push_backlog log
+               LEFT JOIN push_backoff off ON off.connector = log.connector
+         WHERE log.connector = ?
+               AND (
+                (next_attempt_ts IS NULL)
+                OR (next_attempt_ts <= NOW())
+               )
          ORDER BY push_ts " .
          $dbh->sql_limit(1),
         undef,
@@ -80,6 +85,30 @@ sub get_oldest_backlog {
     return $message;
 }
 
+sub backoff {
+    my ($self) = @_;
+    my $ra = Bugzilla::Extension::Push::Backoff->match({
+        connector => $self->name
+    });
+    return $ra->[0] if @$ra;
+    return Bugzilla::Extension::Push::Backoff->create({
+        connector => $self->name
+    });
+}
+
+sub reset_backoff {
+    my ($self) = @_;
+    my $backoff = $self->backoff;
+    $backoff->reset();
+    $backoff->update();
+}
+
+sub inc_backoff {
+    my ($self) = @_;
+    my $backoff = $self->backoff;
+    $backoff->inc();
+    $backoff->update();
+}
 
 1;
 

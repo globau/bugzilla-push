@@ -27,11 +27,6 @@ use constant REQUIRED_MODULES => [
         module  => 'Net::RabbitMQ',
         version => '0'
     },
-    {
-        package => 'POE',
-        module  => 'POE',
-        version => '0'
-    },
 ];
 
 use constant OPTIONAL_MODULES => [ ];

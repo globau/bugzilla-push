@@ -14,14 +14,13 @@ use Bugzilla::Constants;
 use File::Basename;
 
 sub new {
-    my ($class, %args) = @_;
+    my ($class) = @_;
     my $self = {};
     bless($self, $class);
 
     $self->{names} = [];
     $self->{objects} = {};
     $self->{path} = bz_locations->{'extensionsdir'} . '/Push/lib/Connector';
-    $self->{logger} = $args{Logger};
 
     foreach my $file (glob($self->{path} . '/*.pm')) {
         my $name = basename($file);
@@ -40,7 +39,7 @@ sub start {
         my $file = $self->{path} . "/$name.pm";
         require $file;
         my $package = "Bugzilla::Extension::Push::Connector::$name";
-        $self->{objects}->{$name} = $package->new(Start => 1, Logger => $self->{logger});
+        $self->{objects}->{$name} = $package->new(Start => 1);
     }
 }
 
@@ -52,6 +51,11 @@ sub names {
 sub list {
     my ($self) = @_;
     return values %{$self->{objects}};
+}
+
+sub exists {
+    my ($self, $name) = @_;
+    return grep { $_ eq $name } $self->names;
 }
 
 1;

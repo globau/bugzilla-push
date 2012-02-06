@@ -24,8 +24,6 @@ use Storable 'dclone';
 
 our $VERSION = '1';
 
-use constant DEBUGGING => 1;
-
 #
 # deal with creation and updated events
 #
@@ -201,9 +199,6 @@ sub _push {
     # serialise the object
     my ($rh_object, $name) = _serialiser()->object_to_hash($object);
     if (!$rh_object) {
-        if (DEBUGGING) {
-            die "empty hash from serialiser ($message_type $object)\n";
-        }
         warn "empty hash from serialiser ($message_type $object)\n";
         return;
     }
@@ -220,12 +215,6 @@ sub _push {
     Bugzilla::Extension::Push::Message->create({
         payload => $self->_to_json($rh)
     });
-
-    if (DEBUGGING) {
-        open(FH, '>>' . bz_locations()->{datadir} . '/push.log');
-        print FH $self->_to_json($rh) . "\n\n";
-        close FH;
-    }
 }
 
 #
@@ -248,15 +237,11 @@ sub _to_json {
     if (!exists $cache->{'json'}) {
         $json = JSON->new();
         $json->shrink(1);
-        $json->canonical(1) if DEBUGGING;
         $cache->{'json'} = $json;
     } else {
         $json = $cache->{'json'};
     }
-    
-    return DEBUGGING
-        ? $json->pretty->encode($rh)
-        : $json->encode($rh);
+    return : $json->encode($rh);
 }
 
 #
@@ -366,6 +351,26 @@ sub db_schema_abstract_schema {
             },
         ],
     };
+    $args->{'schema'}->{'push_backoff'} = {
+        FIELDS => [
+            id => {
+                TYPE => 'MEDIUMSERIAL',
+                NOTNULL => 1,
+                PRIMARYKEY => 1,
+            },
+            connector => {
+                TYPE => 'TINYTEXT',
+                NOTNULL => 1,
+            },
+            next_attempt_ts => {
+                TYPE => 'DATETIME',
+            },
+            attempts => {
+                TYPE => 'INT2',
+                NOTNULL => 1,
+            },
+        ],
+    };
     $args->{'schema'}->{'push_log'} = {
         FIELDS => [
             id => {
@@ -375,6 +380,10 @@ sub db_schema_abstract_schema {
             },
             message_id => {
                 TYPE => 'INT3',
+                NOTNULL => 1,
+            },
+            connector => {
+                TYPE => 'TINYTEXT',
                 NOTNULL => 1,
             },
             push_ts => {

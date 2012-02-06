@@ -9,4 +9,9 @@
 [% IF error == "push_invalid_payload" %]
   [% title = "Invalid payload" %]
   An invalid payload was passed to Push.
+
+[% ELSIF error == "push_invalid_connector" %]
+  [% title = "Invalid connector" %]
+  An invalid connector was passed to Push.
+
 [% END %]
