@@ -339,7 +339,7 @@ sub db_schema_abstract_schema {
                 NOTNULL => 1,
             },
             connector => {
-                TYPE => 'TINYTEXT',
+                TYPE => 'VARCHAR(32)',
                 NOTNULL => 1,
             },
             attempt_ts => {
@@ -348,6 +348,12 @@ sub db_schema_abstract_schema {
             attempts => {
                 TYPE => 'INT2',
                 NOTNULL => 1,
+            },
+        ],
+        INDEXES => [
+            push_backlog_idx => {
+                FIELDS => ['message_id', 'connector'],
+                TYPE => 'UNIQUE',
             },
         ],
     };
@@ -359,7 +365,7 @@ sub db_schema_abstract_schema {
                 PRIMARYKEY => 1,
             },
             connector => {
-                TYPE => 'TINYTEXT',
+                TYPE => 'VARCHAR(32)',
                 NOTNULL => 1,
             },
             next_attempt_ts => {
@@ -368,6 +374,39 @@ sub db_schema_abstract_schema {
             attempts => {
                 TYPE => 'INT2',
                 NOTNULL => 1,
+            },
+        ],
+        INDEXES => [
+            push_backoff_idx => {
+                FIELDS => ['connector'],
+                TYPE => 'UNIQUE',
+            },
+        ],
+    };
+    $args->{'schema'}->{'push_options'} = {
+        FIELDS => [
+            id => {
+                TYPE => 'MEDIUMSERIAL',
+                NOTNULL => 1,
+                PRIMARYKEY => 1,
+            },
+            connector => {
+                TYPE => 'VARCHAR(32)',
+                NOTNULL => 1,
+            },
+            option_name => {
+                TYPE => 'VARCHAR(32)',
+                NOTNULL => 1,
+            },
+            option_value => {
+                TYPE => 'VARCHAR(255)',
+                NOTNULL => 1,
+            },
+        ],
+        INDEXES => [
+            push_options_idx => {
+                FIELDS => ['connector', 'option_name'],
+                TYPE => 'UNIQUE',
             },
         ],
     };
@@ -383,7 +422,7 @@ sub db_schema_abstract_schema {
                 NOTNULL => 1,
             },
             connector => {
-                TYPE => 'TINYTEXT',
+                TYPE => 'VARCHAR(32)',
                 NOTNULL => 1,
             },
             push_ts => {
@@ -403,7 +442,6 @@ sub db_schema_abstract_schema {
             },
         ],
     };
-    # XXX indexes
 }
 
 sub config_add_panels {

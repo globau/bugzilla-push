@@ -11,18 +11,16 @@ use strict;
 use warnings;
 
 use Bugzilla;
+use Bugzilla::Extension::Push::ConnectorConfig;
 use Bugzilla::Extension::Push::BacklogMessage;
 use Bugzilla::Extension::Push::Backoff;
 
 sub new {
-    my ($class, %args) = @_;
+    my ($class) = @_;
     my $self = {};
     bless($self, $class);
     ($self->{name}) = $class =~ /^.+:(.+)$/;
     $self->init();
-    if ($args{Start}) {
-        $self->start();
-    }
     return $self;
 }
 
@@ -34,17 +32,32 @@ sub name {
 sub init {
     my ($self) = @_;
     # abstract
+    # perform any initialisation here
+    # will be run when created by the web pages or by the daemon
 }
 
 sub start {
     my ($self) = @_;
     # abstract
+    # run from the daemon only; connect to remote hosts, etc
 }
 
 sub send {
     my ($self, $message) = @_;
     # abstract
+    # deliver the message, daemon only
 }
+
+sub options {
+    my ($self) = @_;
+    # abstract
+    # return an array of configuration variables
+    return ();
+}
+
+#
+# backlog
+#
 
 sub backlog_count {
     my ($self) = @_;
@@ -108,6 +121,21 @@ sub inc_backoff {
     my $backoff = $self->backoff;
     $backoff->inc();
     $backoff->update();
+}
+
+sub config {
+    my ($self) = @_;
+    if (!$self->{config}) {
+        $self->load_config();
+    }
+    return $self->{config};
+}
+
+sub load_config {
+    my ($self) = @_;
+    my $config = Bugzilla::Extension::Push::ConnectorConfig->new($self);
+    $config->load();
+    $self->{config} = $config;
 }
 
 1;

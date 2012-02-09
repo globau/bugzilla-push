@@ -13,6 +13,7 @@ use warnings;
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Push;
 use Bugzilla::Extension::Push::Logger;
+use Carp qw(confess);
 use Daemon::Generic;
 use File::Basename;
 use Pod::Usage;
@@ -85,6 +86,7 @@ sub gd_setup_signals {
 
 sub gd_run {
     my $self = shift;
+    $::SIG{__DIE__} = \&Carp::confess if $self->{debug};
     my $push = Bugzilla->push_ext;
     $push->logger->{debug} = $self->{debug};
     $push->start();

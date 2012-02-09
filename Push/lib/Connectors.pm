@@ -26,6 +26,9 @@ sub new {
         my $name = basename($file);
         $name =~ s/\.pm$//;
         next if $name eq 'Base';
+        if (length($name) > 32) {
+            Bugzilla->push_ext->logger->info("Ignoring connector '$name': Name longer than 32 characters");
+        }
         push @{$self->{names}}, $name;
     }
 
@@ -39,7 +42,16 @@ sub start {
         my $file = $self->{path} . "/$name.pm";
         require $file;
         my $package = "Bugzilla::Extension::Push::Connector::$name";
-        $self->{objects}->{$name} = $package->new(Start => 1);
+
+        eval {
+            my $connector = $package->new();
+            $connector->load_config();
+            $connector->start();
+            $self->{objects}->{$name} = $connector;
+        };
+        if ($@) {
+            Bugzilla->push_ext->logger->error("Connector '$name' failed to start: $@");
+        }
     }
 }
 
@@ -54,6 +66,11 @@ sub list {
 }
 
 sub exists {
+    my ($self, $name) = @_;
+    $self->by_name($name) ? 1 : 0;
+}
+
+sub by_name {
     my ($self, $name) = @_;
     return grep { $_ eq $name } $self->names;
 }

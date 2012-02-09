@@ -25,6 +25,23 @@ sub init {
     $self->{json}->canonical(1);
 }
 
+sub options {
+    return (
+        {
+            name     => 'filename',
+            label    => 'Filename',
+            type     => 'string',
+            default  => 'push.log',
+            required => 1,
+            validate => sub {
+                my $filename = shift;
+                $filename =~ m#^/#
+                    && die "Absolute paths are not permitted\n";
+            },
+        },
+    );
+}
+
 sub send {
     my ($self, $message) = @_;
     my $json = $self->{json};
@@ -37,7 +54,9 @@ sub send {
     my $rh = from_json($payload);
     $payload = $json->pretty->encode($rh);
 
-    my $fh = FileHandle->new('>>' . bz_locations()->{'datadir'} . '/push.log');
+    my $filename = bz_locations()->{'datadir'} . '/' . $self->config->{filename};
+    Bugzilla->push_ext->logger->debug("File: Appending to $filename");
+    my $fh = FileHandle->new(">>$filename");
     $fh->binmode(':utf8');
     $fh->print(
         "[" . scalar(localtime) . "]\n" .

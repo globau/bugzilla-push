@@ -20,9 +20,6 @@ BEGIN {
     Bugzilla->extensions;
 }
 
-use Carp qw(confess);
-$::SIG{__DIE__} = \&Carp::confess;
-
 use Bugzilla::Extension::Push::Daemon;
 Bugzilla::Extension::Push::Daemon->start();
 

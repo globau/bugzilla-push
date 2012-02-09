@@ -62,7 +62,7 @@ sub reset {
     $self->{next_attempt_ts} = Bugzilla->dbh->selectrow_array('SELECT NOW()');
     $self->{attempts} = 0;
     Bugzilla->push_ext->logger->debug(
-        sprintf("resetting backofs for %s", $self->connector)
+        sprintf("resetting backoff for %s", $self->connector)
     );
 }
 

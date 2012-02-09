@@ -129,7 +129,7 @@ sub get_oldest_message {
     });
     return $message;
 }
-    
+
 sub logger {
     my ($self, $value) = @_;
     $self->{logger} = $value if $value;
