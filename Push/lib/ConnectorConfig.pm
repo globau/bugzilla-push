@@ -18,19 +18,31 @@ sub new {
         _connector => $connector
     };
     bless($self, $class);
+
+    $self->{_options} = [$connector->options];
+    unshift @{$self->{_options}}, {
+        name     => 'enabled',
+        label    => 'Status',
+        type     => 'select',
+        values   => [ 'Enabled', 'Disabled' ],
+        required => 1,
+        default  => 'Disabled',
+    };
+
     return $self;
 }
 
 sub options {
     my ($self) = @_;
-    return $self->{_connector}->options;
+    return @{$self->{_options}};
 }
 
 sub load {
     my ($self) = @_;
+    my $config = {};
+    my $logger = Bugzilla->push_ext->logger;
 
     # prime $config with defaults
-    my $config = {};
     foreach my $rh ($self->options) {
         $config->{$rh->{name}} = $rh->{default};
     }
@@ -40,13 +52,16 @@ sub load {
         connector => $self->{_connector}->name,
     });
     foreach my $option (@$options) {
-        $config->{$option->option_name} = $option->option_value;
+        $config->{$option->name} = $option->value;
     }
 
     # validate
     $self->_validate_config($config);
-    foreach my $key (keys %$config) {
-        $self->{$key} = $config->{$key};
+
+    # done, update self
+    foreach my $name (keys %$config) {
+        $logger->debug(sprintf("%s: set %s=%s\n", $self->{_connector}->name, $name, $config->{$name}));
+        $self->{$name} = $config->{$name};
     }
 }
 
@@ -54,6 +69,45 @@ sub validate {
     my ($self, $config) = @_;
     $self->_validate_mandatory($config);
     $self->_validate_config($config);
+}
+
+sub update {
+    my ($self) = @_;
+
+    my @valid_options = map { $_->{name} } $self->options;
+
+    my %options;
+    my $options_list = Bugzilla::Extension::Push::Option->match({
+        connector => $self->{_connector}->name,
+    });
+    foreach my $option (@$options_list) {
+        $options{$option->name} = $option;
+    }
+
+    # delete options which are no longer valid
+    foreach my $name (keys %options) {
+        if (!grep { $_ eq $name } @valid_options) {
+            $options{$name}->remove_from_db();
+            delete $options{$name};
+        }
+    }
+
+    # update options
+    foreach my $name (keys %options) {
+        my $option = $options{$name};
+        $option->set_value($self->{$name});
+        $option->update();
+    }
+
+    # add missing options
+    foreach my $name (@valid_options) {
+        next if exists $options{$name};
+        Bugzilla::Extension::Push::Option->create({
+            connector    => $self->{_connector}->name,
+            option_name  => $name,
+            option_value => $self->{$name},
+        });
+    }
 }
 
 sub _remove_invalid_options {

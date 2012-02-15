@@ -11,6 +11,7 @@ use strict;
 use warnings;
 
 use Bugzilla::Constants;
+use Bugzilla::Util qw(trick_taint);
 use File::Basename;
 
 sub new {
@@ -22,37 +23,81 @@ sub new {
     $self->{objects} = {};
     $self->{path} = bz_locations->{'extensionsdir'} . '/Push/lib/Connector';
 
+    my $logger = Bugzilla->push_ext->logger;
     foreach my $file (glob($self->{path} . '/*.pm')) {
         my $name = basename($file);
         $name =~ s/\.pm$//;
         next if $name eq 'Base';
         if (length($name) > 32) {
-            Bugzilla->push_ext->logger->info("Ignoring connector '$name': Name longer than 32 characters");
+            $logger->info("Ignoring connector '$name': Name longer than 32 characters");
         }
         push @{$self->{names}}, $name;
+        $logger->debug("Found connector '$name'");
     }
 
     return $self;
 }
 
-sub start {
+sub _load {
     my ($self) = @_;
+    return if scalar keys %{$self->{objects}};
+
+    my $logger = Bugzilla->push_ext->logger;
     foreach my $name (@{$self->{names}}) {
         next if exists $self->{objects}->{$name};
         my $file = $self->{path} . "/$name.pm";
+        trick_taint($file);
         require $file;
         my $package = "Bugzilla::Extension::Push::Connector::$name";
 
+        $logger->debug("Loading connector '$name'");
         eval {
             my $connector = $package->new();
             $connector->load_config();
-            $connector->start();
             $self->{objects}->{$name} = $connector;
         };
         if ($@) {
-            Bugzilla->push_ext->logger->error("Connector '$name' failed to start: $@");
+            $logger->error("Connector '$name' failed to load: $@");
         }
     }
+}
+
+sub start {
+    my ($self) = @_;
+    my $logger = Bugzilla->push_ext->logger;
+    $self->_load();
+    foreach my $connector ($self->list) {
+        next unless $connector->enabled;
+        $logger->debug("Starting '" . $connector->name . "'");
+        eval {
+            $connector->start();
+        };
+        if ($@) {
+            logger->error("Connector '" . $connector->name . "' failed to start: $@");
+        }
+    }
+}
+
+sub stop {
+    my ($self) = @_;
+    my $logger = Bugzilla->push_ext->logger;
+    foreach my $connector ($self->list) {
+        next unless $connector->enabled;
+        $logger->debug("Stopping '" . $connector->name . "'");
+        eval {
+            $connector->stop();
+        };
+        if ($@) {
+            logger->error("Connector '" . $connector->name . "' failed to stop: $@");
+        }
+    }
+}
+
+sub reload {
+    my ($self) = @_;
+    $self->stop();
+    $self->{objects} = {};
+    $self->start();
 }
 
 sub names {
@@ -62,6 +107,7 @@ sub names {
 
 sub list {
     my ($self) = @_;
+    $self->_load();
     return values %{$self->{objects}};
 }
 

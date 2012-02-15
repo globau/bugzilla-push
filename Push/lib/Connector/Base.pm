@@ -42,6 +42,12 @@ sub start {
     # run from the daemon only; connect to remote hosts, etc
 }
 
+sub stop {
+    my ($self) = @_;
+    # abstract
+    # run from the daemon only; disconnect from remote hosts, etc
+}
+
 sub send {
     my ($self, $message) = @_;
     # abstract
@@ -136,6 +142,11 @@ sub load_config {
     my $config = Bugzilla::Extension::Push::ConnectorConfig->new($self);
     $config->load();
     $self->{config} = $config;
+}
+
+sub enabled {
+    my ($self) = @_;
+    return $self->config->{enabled} eq 'Enabled';
 }
 
 1;

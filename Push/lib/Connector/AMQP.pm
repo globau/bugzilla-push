@@ -76,13 +76,23 @@ sub options {
             default  => '/',
             required => 1,
         },
-        {
-            name    => 'routing_key',
-            label   => 'Routing Key Template',
-            type    => 'string',
-            default => '%target%.%action%.%field%',
-        },
     );
+}
+
+# XXX
+# name    => 'routing_key',
+# label   => 'Routing Key Template',
+# type    => 'string',
+# default => '%target%.%action%.%field%',
+
+sub stop {
+    my ($self) = @_;
+    my $logger = Bugzilla->push_ext->logger;
+    if ($self->{mq}) {
+        $logger->debug('AMQP: disconnecting');
+        $self->{mq}->disconnect();
+        $self->{mq} = 0;
+    }
 }
 
 sub send {

@@ -13,7 +13,11 @@ use warnings;
 use base qw(Bugzilla::Extension);
 
 use Bugzilla::Constants;
+use Bugzilla::Extension::Push::Admin;
+use Bugzilla::Extension::Push::Connectors;
+use Bugzilla::Extension::Push::Logger;
 use Bugzilla::Extension::Push::Message;
+use Bugzilla::Extension::Push::Push;
 use Bugzilla::Extension::Push::Serialise;
 use Bugzilla::Extension::Push::Util;
 use Bugzilla::Install::Filesystem;
@@ -23,6 +27,24 @@ use Scalar::Util 'blessed';
 use Storable 'dclone';
 
 our $VERSION = '1';
+
+#
+# monkey patch for convience
+#
+
+BEGIN {
+    *Bugzilla::push_ext = \&_get_instance;
+}
+
+my $_instance;
+sub _get_instance {
+    if (!$_instance) {
+        $_instance = Bugzilla::Extension::Push::Push->new();
+        $_instance->logger(Bugzilla::Extension::Push::Logger->new());
+        $_instance->connectors(Bugzilla::Extension::Push::Connectors->new());
+    }
+    return $_instance;
+}
 
 #
 # deal with creation and updated events
@@ -444,12 +466,6 @@ sub db_schema_abstract_schema {
     };
 }
 
-sub config_add_panels {
-    my ($self, $args) = @_;
-    my $modules = $args->{'panel_modules'};
-    $modules->{'push'} = 'Bugzilla::Extension::Push::Params';
-}
-
 sub install_filesystem {
     my ($self, $args) = @_;
     my $files = $args->{'files'};
@@ -460,6 +476,20 @@ sub install_filesystem {
     $files->{$scriptname} = {
         perms => Bugzilla::Install::Filesystem::WS_EXECUTE
     };
+}
+
+sub page_before_template {
+    my ($self, $args) = @_;
+    my $page = $args->{'page_id'};
+    my $vars = $args->{'vars'};
+
+    if ($page eq 'push_config.html') {
+        admin_config($vars);
+    } elsif ($page eq 'push_queues.html') {
+        admin_queues($vars);
+    } elsif ($page eq 'push_log.html') {
+        admin_log($vars);
+    }
 }
 
 __PACKAGE__->NAME;

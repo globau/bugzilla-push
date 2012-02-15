@@ -1,0 +1,105 @@
+[% PROCESS global/header.html.tmpl
+  title = "Push Administration: Configuration"
+%]
+
+<style>
+.connector th {
+  text-align: left;
+  vertical-align: middle !important;
+}
+.option th {
+  text-align: right;
+  font-weight: normal !important;
+  vertical-align: middle !important;
+}
+.hidden {
+  display: none;
+}
+</style>
+
+<script>
+var Dom = YAHOO.util.Dom;
+
+function toggle_options(visible, name) {
+  var rows = Dom.getElementsByClassName(name + '_tr');
+  for (var i = 0, l = rows.length; i < l; i++) {
+    if (visible) {
+      Dom.removeClass(rows[i], 'hidden');
+    } else {
+      Dom.addClass(rows[i], 'hidden');
+    }
+  }
+}
+
+</script>
+
+<p>
+Available Push connectors:
+</p>
+
+<form method="POST" action="page.cgi">
+<input type="hidden" name="id" value="push_config.html">
+<input type="hidden" name="save" value="1">
+
+<table border="0" cellspacing="0" cellpadding="5" width="100%">
+
+[% FOREACH connector = connectors.list %]
+  <tr class="connector">
+    <th>[% connector.name FILTER html %]</th>
+    <td><hr></td>
+  </tr>
+  [% FOREACH option = connector.config.options %]
+    [% class = connector.name _ '_tr' IF option.name != 'enabled' %]
+    <tr class="[% class FILTER html %] option">
+      <th>[% option.label FILTER html %]</th>
+      <td>
+        [% IF option.type == 'string' %]
+          <input type="text" name="[% connector.name FILTER html %].[% option.name FILTER html %]"
+                 value="[% connector.config.${option.name} FILTER html %]" size="60"
+        [% ELSIF option.type == 'select' %]
+          <select name="[% connector.name FILTER html %].[% option.name FILTER html %]"
+            [% IF option.name == 'enabled' %]
+              id="[% connector.name FILTER js %]_enabled"
+              onchange="toggle_options(this.value == 'Enabled', '[% connector.name FILTER js %]')"
+            [% END %]
+          >
+            [% FOREACH value = option.values %]
+              <option value="[% value FILTER html %]"
+               [% 'selected' IF value == connector.config.${option.name} %] >[% value FILTER html %]</option>
+            [% END %]
+          </select>
+        [% ELSE %]
+          unsupported option type
+        [% END %]
+      </td>
+    </tr>
+  [% END %]
+  <script>
+    var is_enabled = document.getElementById('[% connector.name FILTER js %]_enabled').value == 'Enabled';
+    toggle_options(is_enabled, '[% connector.name FILTER js %]');
+  </script>
+[% END %]
+
+<tr>
+  <td>&nbsp;</td>
+  <td><hr></td>
+</tr>
+
+<tr>
+  <td>&nbsp;</td>
+  <td>
+    <input type="submit" value="Submit Changes">
+  </td>
+</tr>
+
+
+<tr>
+  <td style="min-width: 10em">&nbsp;</td>
+  <td width="100%">&nbsp;</td>
+</tr>
+
+</table>
+
+</form>
+
+[% INCLUDE global/footer.html.tmpl %]

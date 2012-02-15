@@ -10,44 +10,35 @@ package Bugzilla::Extension::Push::Push;
 use strict;
 use warnings;
 
-use Bugzilla::Extension::Push::Constants;
-use Bugzilla::Extension::Push::Connectors;
-use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::BacklogMessage;
+use Bugzilla::Extension::Push::Connectors;
+use Bugzilla::Extension::Push::Constants;
+use Bugzilla::Extension::Push::Logger;
+use Bugzilla::Extension::Push::Message;
+use Bugzilla::Extension::Push::Option;
+use DateTime;
 
-BEGIN {
-    *Bugzilla::push_ext = \&_get_instance;
-}   
-
-my $_instance;
-sub _get_instance {
-    if (!$_instance) {
-        $_instance = Bugzilla::Extension::Push::Push->_new();
-    }
-    return $_instance;
-}
-
-sub _new {
+sub new {
     my ($class) = @_;
     my $self = {};
     bless($self, $class);
-
-    $self->logger(Bugzilla::Extension::Push::Logger->new());
-    $self->connectors(Bugzilla::Extension::Push::Connectors->new());
-
     return $self;
 }
 
 sub start {
     my ($self) = @_;
     my $connectors = $self->connectors;
-    $connectors->start();
+    $self->{config_last_modified} = $self->get_config_last_modified();
+    $self->{config_last_checked} = (time);
 
     foreach my $connector ($connectors->list) {
         $connector->reset_backoff();
     }
 
+    $connectors->start();
+
     while(1) {
+        $self->_reload();
         $self->push();
         sleep(POLL_INTERVAL_SECONDS);
     }
@@ -58,11 +49,21 @@ sub push {
     my $logger = $self->logger;
     my $connectors = $self->connectors;
 
+    my $enabled = 0;
+    foreach my $connector ($connectors->list) {
+        if ($connector->enabled) {
+            $enabled = 1;
+            last;
+        }
+    }
+    return unless $enabled;
+
     $logger->debug("polling");
 
     # process each message
     while(my $message = $self->get_oldest_message) {
         foreach my $connector ($connectors->list) {
+            next unless $connector->enabled;
             $logger->debug("pushing to " . $connector->name);
 
             my $is_backlogged = $connector->backlog_count;
@@ -91,6 +92,7 @@ sub push {
 
     # process backlog
     foreach my $connector ($connectors->list) {
+        next unless $connector->enabled;
         my $message = $connector->get_oldest_backlog();
         next unless $message;
 
@@ -112,6 +114,59 @@ sub push {
             $message = $connector->get_oldest_backlog();
         }
     }
+}
+
+sub _reload {
+    my ($self) = @_;
+
+    # check for updated config every 60 seconds
+    my $now = (time);
+    if ($now - $self->{config_last_checked} < 60) {
+        return;
+    }
+    $self->{config_last_checked} = $now;
+
+    $self->logger->debug('Checking for updated configuration');
+    if ($self->get_config_last_modified eq $self->{config_last_modified}) {
+        return;
+    }
+    $self->{config_last_modified} = $self->get_config_last_modified();
+
+    $self->logger->debug('Configuration has been updated');
+    $self->connectors->reload();
+}
+
+sub get_config_last_modified {
+    my ($self) = @_;
+    my $options_list = Bugzilla::Extension::Push::Option->match({
+        connector   => '*',
+        option_name => 'last-modified',
+    });
+    if (@$options_list) {
+        return $options_list->[0]->value;
+    } else {
+        return $self->set_config_last_modified();
+    }
+}
+
+sub set_config_last_modified {
+    my ($self) = @_;
+    my $options_list = Bugzilla::Extension::Push::Option->match({
+        connector   => '*',
+        option_name => 'last-modified',
+    });
+    my $now = DateTime->now->datetime();
+    if (@$options_list) {
+        $options_list->[0]->set_value($now);
+        $options_list->[0]->update();
+    } else {
+        Bugzilla::Extension::Push::Option->create({
+            connector    => '*',
+            option_name  => 'last-modified',
+            option_value => $now,
+        });
+    }
+    return $now;
 }
 
 sub get_oldest_message {

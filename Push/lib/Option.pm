@@ -13,6 +13,7 @@ use warnings;
 use base 'Bugzilla::Object';
 
 use Bugzilla;
+use Bugzilla::Error;
 use Bugzilla::Util;
 
 #
@@ -38,9 +39,15 @@ use constant LIST_ORDER => 'connector';
 # accessors
 #
 
-sub connector    { return $_[0]->{'connector'};    }
-sub option_name  { return $_[0]->{'option_name'};  }
-sub option_value { return $_[0]->{'option_value'}; }
+sub connector { return $_[0]->{'connector'};    }
+sub name      { return $_[0]->{'option_name'};  }
+sub value     { return $_[0]->{'option_value'}; }
+
+#
+# mutators
+#
+
+sub set_value { $_[0]->{'option_value'} = $_[1]; }
 
 #
 # validators
@@ -48,7 +55,9 @@ sub option_value { return $_[0]->{'option_value'}; }
 
 sub _check_connector {
     my ($invocant, $value) = @_;
-    Bugzilla->push_ext->connectors->exists($value) || ThrowCodeError('push_invalid_connector');
+    $value eq '*'
+        || Bugzilla->push_ext->connectors->exists($value)
+        || ThrowCodeError('push_invalid_connector');
     return $value;
 }
 
