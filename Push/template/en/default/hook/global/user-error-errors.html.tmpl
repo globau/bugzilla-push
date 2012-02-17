@@ -6,10 +6,6 @@
   # defined by the Mozilla Public License, v. 2.0.
   #%]
 
-[% PROCESS global/header.html.tmpl
-  title = "Push Administration: Queues"
-%]
-
-queues goes here
-
-[% INCLUDE global/footer.html.tmpl %]
+[% IF error == "push_error" %]
+  [% error_message FILTER html %]
+[% END %]

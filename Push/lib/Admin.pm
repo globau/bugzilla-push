@@ -11,6 +11,9 @@ use strict;
 use warnings;
 
 use Bugzilla;
+use Bugzilla::Error;
+use Bugzilla::Extension::Push::Util;
+use Bugzilla::Util qw(trim);
 
 use base qw(Exporter);
 our @EXPORT = qw(
@@ -29,9 +32,28 @@ sub admin_config {
         $dbh->bz_start_transaction();
         foreach my $connector ($push->connectors->list) {
             my $config = $connector->config;
+
+            # read values from form
+            my $values = {};
             foreach my $option ($config->options) {
                 my $name = $option->{name};
-                $config->{$name} = $input->{$connector->name . ".$name"};
+                $values->{$name} = trim($input->{$connector->name . ".$name"});
+            }
+
+            # validate
+            if ($values->{enabled} eq 'Enabled') {
+                eval {
+                    $config->validate($values);
+                };
+                if ($@) {
+                    ThrowUserError('push_error', { error_message => clean_error($@) });
+                }
+            }
+
+            # update
+            foreach my $option ($config->options) {
+                my $name = $option->{name};
+                $config->{$name} = $values->{$name};
             }
             $config->update();
         }

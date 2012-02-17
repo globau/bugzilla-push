@@ -36,12 +36,6 @@ sub init {
     # will be run when created by the web pages or by the daemon
 }
 
-sub start {
-    my ($self) = @_;
-    # abstract
-    # run from the daemon only; connect to remote hosts, etc
-}
-
 sub stop {
     my ($self) = @_;
     # abstract

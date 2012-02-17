@@ -10,6 +10,7 @@ package Bugzilla::Extension::Push::Util;
 use strict;
 use warnings;
 
+use Bugzilla::Constants;
 use Bugzilla::Util 'datetime_from';
 use Data::Dumper;
 use Scalar::Util 'blessed';
@@ -22,6 +23,7 @@ our @EXPORT = qw(
     hash_undef_to_empty
     is_public
     mapr
+    clean_error
 );
 
 # returns true if the specified object is public
@@ -95,6 +97,17 @@ sub debug_dump {
     my $output = Dumper($object);
     $output =~ s/</&lt;/g;
     print "<pre>$output</pre>";
+}
+
+# removes stacktrace and "at /some/path ..." from errors
+sub clean_error {
+    my ($error) = @_;
+    my $path = bz_locations->{'extensionsdir'};
+    $error = $1 if $error =~ /^(.+?) at \Q$path/s;
+    $path = '/loader/0x';
+    $error = $1 if $error =~ /^(.+?) at \Q$path/s;
+    $error =~ s/(^\s+|\s+$)//g;
+    return $error;
 }
 
 1;

@@ -1,36 +1,26 @@
+[%# This Source Code Form is subject to the terms of the Mozilla Public
+  # License, v. 2.0. If a copy of the MPL was not distributed with this
+  # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+  #
+  # This Source Code Form is "Incompatible With Secondary Licenses", as
+  # defined by the Mozilla Public License, v. 2.0.
+  #%]
+
 [% PROCESS global/header.html.tmpl
   title = "Push Administration: Configuration"
+  javascript_urls = [ 'extensions/Push/web/admin.js' ]
+  style_urls = [ 'extensions/Push/web/admin.css' ]
 %]
 
-<style>
-.connector th {
-  text-align: left;
-  vertical-align: middle !important;
-}
-.option th {
-  text-align: right;
-  font-weight: normal !important;
-  vertical-align: middle !important;
-}
-.hidden {
-  display: none;
-}
-</style>
-
 <script>
-var Dom = YAHOO.util.Dom;
-
-function toggle_options(visible, name) {
-  var rows = Dom.getElementsByClassName(name + '_tr');
-  for (var i = 0, l = rows.length; i < l; i++) {
-    if (visible) {
-      Dom.removeClass(rows[i], 'hidden');
-    } else {
-      Dom.addClass(rows[i], 'hidden');
-    }
-  }
-}
-
+var push_defaults = new Array();
+[% FOREACH connector = connectors.list %]
+  [% FOREACH option = connector.config.options %]
+    [% IF option.name != 'enabled' && option.default != '' %]
+      push_defaults['[% connector.name FILTER js %]_[% option.name FILTER js %]'] = '[% option.default FILTER js %]';
+    [% END %]
+  [% END %]
+[% END %]
 </script>
 
 <p>
@@ -51,23 +41,35 @@ Available Push connectors:
   [% FOREACH option = connector.config.options %]
     [% class = connector.name _ '_tr' IF option.name != 'enabled' %]
     <tr class="[% class FILTER html %] option">
-      <th>[% option.label FILTER html %]</th>
+      <th>
+        [% IF option.required %]
+          <span class="required_option" title="Mandatory option">*</span>&nbsp;
+        [% END %]
+        [% option.label FILTER html %]
+      </th>
       <td>
+
         [% IF option.type == 'string' %]
           <input type="text" name="[% connector.name FILTER html %].[% option.name FILTER html %]"
                  value="[% connector.config.${option.name} FILTER html %]" size="60"
+                 id="[% connector.name FILTER html %]_[% option.name FILTER html %]">
         [% ELSIF option.type == 'select' %]
           <select name="[% connector.name FILTER html %].[% option.name FILTER html %]"
+                  id="[% connector.name FILTER html %]_[% option.name FILTER html %]"
             [% IF option.name == 'enabled' %]
-              id="[% connector.name FILTER js %]_enabled"
               onchange="toggle_options(this.value == 'Enabled', '[% connector.name FILTER js %]')"
             [% END %]
           >
+            [% IF option.name != 'enabled' && !option.required %]
+              <option value="""
+               [% ' selected' IF connector.config.${option.name} == "" %]></option>
+            [% END %]
             [% FOREACH value = option.values %]
               <option value="[% value FILTER html %]"
-               [% 'selected' IF value == connector.config.${option.name} %] >[% value FILTER html %]</option>
+               [% ' selected' IF connector.config.${option.name} == value %]>[% value FILTER html %]</option>
             [% END %]
           </select>
+
         [% ELSE %]
           unsupported option type
         [% END %]
@@ -89,6 +91,7 @@ Available Push connectors:
   <td>&nbsp;</td>
   <td>
     <input type="submit" value="Submit Changes">
+    <input type="submit" value="Reset to Defaults" onclick="reset_to_defaults(); return false">
   </td>
 </tr>
 

@@ -28,6 +28,8 @@ use Storable 'dclone';
 
 our $VERSION = '1';
 
+$Carp::CarpInternal{'CGI::Carp'} = 1;
+
 #
 # monkey patch for convience
 #

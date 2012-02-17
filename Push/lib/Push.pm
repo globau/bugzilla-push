@@ -35,8 +35,6 @@ sub start {
         $connector->reset_backoff();
     }
 
-    $connectors->start();
-
     while(1) {
         $self->_reload();
         $self->push();

@@ -14,6 +14,7 @@ use base 'Bugzilla::Extension::Push::Connector::Base';
 
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Constants;
+use Bugzilla::Extension::Push::Util;
 use DateTime;
 use Net::RabbitMQ;
 
@@ -27,8 +28,6 @@ sub init {
     $queue .= DateTime->now->ymd;
     $self->{queue} = $queue;
 }
-
-# 'mac', { user => 'guest', password => 'guest' });
 
 sub options {
     return (
@@ -61,7 +60,7 @@ sub options {
             label    => 'Password',
             type     => 'string',
             default  => 'guest',
-            reqiured => 1,
+            required => 1,
         },
         {
             name     => 'exchange',
@@ -88,6 +87,7 @@ sub options {
 sub stop {
     my ($self) = @_;
     my $logger = Bugzilla->push_ext->logger;
+
     if ($self->{mq}) {
         $logger->debug('AMQP: disconnecting');
         $self->{mq}->disconnect();
@@ -95,48 +95,63 @@ sub stop {
     }
 }
 
+sub _connect {
+    my ($self) = @_;
+    my $logger = Bugzilla->push_ext->logger;
+    my $config = $self->config;
+
+    $self->stop();
+
+    $logger->debug('AMQP: Connecting to RabbitMQ ' . $config->{host} . ':' . $config->{port});
+    my $mq = Net::RabbitMQ->new();
+    $mq->connect(
+        $config->{host},
+        {
+            port => $config->{port},
+            user => $config->{username},
+            password => $config->{password},
+        }
+    );
+    $self->{mq} = $mq;
+
+    $self->_open();
+}
+
+sub _open {
+    my ($self) = @_;
+    Bugzilla->push_ext->logger->debug('AMQP: Opening channel ' . $self->{channel});
+    $self->{mq}->channel_open($self->{channel});
+}
+
+sub _close {
+    my ($self) = @_;
+    Bugzilla->push_ext->logger->debug('AMQP: Closing channel ' . $self->{channel});
+    $self->{mq}->channel_close($self->{channel});
+}
+
 sub send {
     my ($self, $message) = @_;
     my $logger = Bugzilla->push_ext->logger;
     my $config = $self->config;
 
-    # verify existing connection
+    # open channel (also acts to verify the connection is still valid)
     if ($self->{mq}) {
         eval {
-            $logger->debug('AMQP: Opening channel ' . $self->{channel});
-            $self->{mq}->channel_open($self->{channel});
+            $self->_open();
         };
         if ($@) {
-            $logger->debug('AMQP: ' . $self->_format_error($@));
+            $logger->debug('AMQP: ' . clean_error($@));
             $self->{mq} = 0;
         }
     }
 
-    # connect if required
-    if (!$self->{mq}) {
-        eval {
-            $logger->debug('AMQP: Connecting to RabbitMQ ' . $config->{host} . ':' . $config->{port});
-            my $mq = Net::RabbitMQ->new();
-            $mq->connect(
-                $config->{host},
-                {
-                    port => $config->{port},
-                    user => $config->{username},
-                    password => $config->{password},
-                }
-            );
-            $self->{mq} = $mq;
-            $logger->debug('AMQP: Opening channel ' . $self->{channel});
-            $self->{mq}->channel_open($self->{channel});
-        };
-        if ($@) {
-            $self->{mq} = 0;
-            return (PUSH_RESULT_TRANSIENT, $self->_format_error($@));
-        }
-    }
-
-    # send message
     eval {
+        # reconnect if required
+        if (!$self->{mq}) {
+            $self->_connect();
+        }
+
+        # send message
         $logger->debug('AMQP: Publishing message');
         $self->{mq}->publish(
             $self->{channel},
@@ -150,22 +165,15 @@ sub send {
                 content_encoding => '8bit',
             },
         );
-        $logger->debug('AMQP: Closing channel ' . $self->{channel});
-        $self->{mq}->channel_close($self->{channel});
+
+        # close channel
+        $self->_close();
     };
     if ($@) {
-        return (PUSH_RESULT_TRANSIENT, $self->_format_error($@));
+        return (PUSH_RESULT_TRANSIENT, clean_error($@));
     }
 
     return PUSH_RESULT_OK;
-}
-
-sub _format_error {
-    my ($self, $error) = @_;
-    my $path = bz_locations->{'extensionsdir'};
-    $error = $1 if $error =~ /^(.+?) at \Q$path/s;
-    $error =~ s/(^\s+|\s+$)//g;
-    return $error;
 }
 
 1;

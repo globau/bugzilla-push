@@ -10,6 +10,7 @@ package Bugzilla::Extension::Push::Connectors;
 use strict;
 use warnings;
 
+use Bugzilla::Extension::Push::Util;
 use Bugzilla::Constants;
 use Bugzilla::Util qw(trick_taint);
 use File::Basename;
@@ -57,23 +58,8 @@ sub _load {
             $self->{objects}->{$name} = $connector;
         };
         if ($@) {
-            $logger->error("Connector '$name' failed to load: $@");
-        }
-    }
-}
-
-sub start {
-    my ($self) = @_;
-    my $logger = Bugzilla->push_ext->logger;
-    $self->_load();
-    foreach my $connector ($self->list) {
-        next unless $connector->enabled;
-        $logger->debug("Starting '" . $connector->name . "'");
-        eval {
-            $connector->start();
-        };
-        if ($@) {
-            logger->error("Connector '" . $connector->name . "' failed to start: $@");
+            $logger->error("Connector '$name' failed to load: " . clean_error($@));
+            $logger->debug("Connector '$name' failed to load: " . $@);
         }
     }
 }
@@ -88,7 +74,8 @@ sub stop {
             $connector->stop();
         };
         if ($@) {
-            logger->error("Connector '" . $connector->name . "' failed to stop: $@");
+            $logger->error("Connector '" . $connector->name . "' failed to stop: " . clean_error($@));
+            $logger->debug("Connector '" . $connector->name . "' failed to stop: $@");
         }
     }
 }

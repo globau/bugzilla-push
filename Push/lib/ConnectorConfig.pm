@@ -25,7 +25,6 @@ sub new {
         label    => 'Status',
         type     => 'select',
         values   => [ 'Enabled', 'Disabled' ],
-        required => 1,
         default  => 'Disabled',
     };
 
@@ -126,7 +125,24 @@ sub _remove_invalid_options {
 sub _validate_mandatory {
     my ($self, $config) = @_;
     $self->_remove_invalid_options($config);
-    # XXX todo
+
+    my @missing;
+    foreach my $option ($self->options) {
+        next unless $option->{required};
+        my $name = $option->{name};
+        if (!exists $config->{$name} || !defined($config->{$name}) || $config->{$name} eq '') {
+            push @missing, $name;
+        }
+    }
+    if (@missing) {
+        my $connector = $self->{_connector}->name;
+        if (scalar @missing == 1) {
+            die "The option '$missing[0]' for the connector '$connector' is mandatory\n";
+        } else {
+            die "The following options for the connector '$connector' are mandatory:\n  "
+                . join("\n  ", @missing) . "\n";
+        }
+    }
 }
 
 sub _validate_config {
