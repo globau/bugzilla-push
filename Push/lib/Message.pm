@@ -24,20 +24,23 @@ use constant DB_COLUMNS => qw(
     id
     push_ts
     payload
+    routing_key
 );
 use constant LIST_ORDER => 'push_ts';
 use constant VALIDATORS => {
-    push_ts => \&_check_push_ts,
-    payload => \&_check_payload,
+    push_ts     => \&_check_push_ts,
+    payload     => \&_check_payload,
+    routing_key => \&_check_routing_key,
 };
 
 #
 # accessors
 #
 
-sub push_ts    { return $_[0]->{'push_ts'}; }
-sub payload    { return $_[0]->{'payload'}; }
-sub message_id { return $_[0]->id;          }
+sub push_ts     { return $_[0]->{'push_ts'};     }
+sub payload     { return $_[0]->{'payload'};     }
+sub routing_key { return $_[0]->{'routing_key'}; }
+sub message_id  { return $_[0]->id;              }
 
 #
 # validators
@@ -52,6 +55,12 @@ sub _check_push_ts {
 sub _check_payload {
     my ($invocant, $value) = @_;
     length($value) || ThrowCodeError('push_invalid_payload');
+    return $value;
+}
+
+sub _check_routing_key {
+    my ($invocant, $value) = @_;
+    (defined($value) && length($value)) || ThrowCodeError('push_invalid_routing_key');
     return $value;
 }
 

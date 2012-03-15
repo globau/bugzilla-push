@@ -49,6 +49,24 @@ sub _get_instance {
 }
 
 #
+# enabled
+#
+
+sub _enabled {
+    my ($self) = @_;
+    if (!exists $self->{'enabled'}) {
+        $self->{'enabled'} = 0;
+        foreach my $connector (Bugzilla->push_ext->connectors->list) {
+            if ($connector->enabled) {
+                $self->{enabled} = 1;
+                last;
+            }
+        }
+    }
+    return $self->{'enabled'};
+}
+
+#
 # deal with creation and updated events
 #
 
@@ -60,7 +78,7 @@ sub _object_created {
     return unless _should_push($object);
     return unless is_public($object);
 
-    $self->_push('create', $object, { timestamp => $args->{'timestamp'} });
+    $self->_push_object('create', $object, { timestamp => $args->{'timestamp'} });
 }
 
 sub _object_modified {
@@ -111,7 +129,7 @@ sub _object_modified {
             timestamp => $args->{'timestamp'},
         };
 
-        $self->_push('modify', $object, $change);
+        $self->_push_object('modify', $object, $change);
     }
 }
 
@@ -216,7 +234,7 @@ sub _morph_flag_update {
 # serialise and insert into the table
 #
 
-sub _push {
+sub _push_object {
     my ($self, $message_type, $object, $changes) = @_;
     my $rh;
 
@@ -231,13 +249,16 @@ sub _push {
     # add in the events hash
     my $rh_event = _serialiser()->changes_to_event($changes);
     return unless $rh_event;
-    $rh_event->{'action'} = $message_type;
-    $rh_event->{'target'} = $name;
+    $rh_event->{'action'}      = $message_type;
+    $rh_event->{'target'}      = $name;
+    $rh_event->{'routing_key'} = "$name.$message_type";
+    $rh_event->{'routing_key'} .= '.' . $rh_event->{'field'} if exists $rh_event->{'field'};
     $rh->{'event'} = $rh_event;
 
     # insert into push table
     Bugzilla::Extension::Push::Message->create({
-        payload => $self->_to_json($rh)
+        payload     => $self->_to_json($rh),
+        routing_key => $rh_event->{'routing_key'},
     });
 }
 
@@ -274,7 +295,7 @@ sub _to_json {
 
 sub object_end_of_create {
     my ($self, $args) = @_;
-    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+    return unless $self->_enabled;
 
     # it's better to process objects from a non-generic end_of_create where
     # possible; don't process them here to avoid duplicate messages
@@ -287,7 +308,7 @@ sub object_end_of_create {
 
 sub object_end_of_update {
     my ($self, $args) = @_;
-    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+    return unless $self->_enabled;
 
     # it's better to process objects from a non-generic end_of_update where
     # possible; don't process them here to avoid duplicate messages
@@ -303,21 +324,39 @@ sub object_end_of_update {
 # object_end_of_update is triggered while a bug is being created
 sub bug_end_of_create {
     my ($self, $args) = @_;
-    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+    return unless $self->_enabled;
     $self->_object_created($args);
 }
 
 sub bug_end_of_update {
     my ($self, $args) = @_;
-    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+    return unless $self->_enabled;
     $self->_object_modified($args);
 }
 
 sub flag_end_of_update {
     my ($self, $args) = @_;
-    return unless Bugzilla->params->{'push-enabled'} eq 'on';
+    return unless $self->_enabled;
     _morph_flag_updates($args);
     $self->_object_modified($args);
+}
+
+#
+# admin hooks
+#
+
+sub page_before_template {
+    my ($self, $args) = @_;
+    my $page = $args->{'page_id'};
+    my $vars = $args->{'vars'};
+
+    if ($page eq 'push_config.html') {
+        admin_config($vars);
+    } elsif ($page eq 'push_queues.html') {
+        admin_queues($vars);
+    } elsif ($page eq 'push_log.html') {
+        admin_log($vars);
+    }
 }
 
 #
@@ -341,6 +380,10 @@ sub db_schema_abstract_schema {
                 TYPE => 'LONGTEXT',
                 NOTNULL => 1,
             },
+            routing_key => {
+                TYPE => 'VARCHAR(64)',
+                NOTNULL => 1,
+            },
         ],
     };
     $args->{'schema'}->{'push_backlog'} = {
@@ -360,6 +403,10 @@ sub db_schema_abstract_schema {
             },
             payload => {
                 TYPE => 'LONGTEXT',
+                NOTNULL => 1,
+            },
+            routing_key => {
+                TYPE => 'VARCHAR(64)',
                 NOTNULL => 1,
             },
             connector => {
@@ -445,6 +492,10 @@ sub db_schema_abstract_schema {
                 TYPE => 'INT3',
                 NOTNULL => 1,
             },
+            routing_key => {
+                TYPE => 'VARCHAR(64)',
+                NOTNULL => 1,
+            },
             connector => {
                 TYPE => 'VARCHAR(32)',
                 NOTNULL => 1,
@@ -478,20 +529,6 @@ sub install_filesystem {
     $files->{$scriptname} = {
         perms => Bugzilla::Install::Filesystem::WS_EXECUTE
     };
-}
-
-sub page_before_template {
-    my ($self, $args) = @_;
-    my $page = $args->{'page_id'};
-    my $vars = $args->{'vars'};
-
-    if ($page eq 'push_config.html') {
-        admin_config($vars);
-    } elsif ($page eq 'push_queues.html') {
-        admin_queues($vars);
-    } elsif ($page eq 'push_log.html') {
-        admin_log($vars);
-    }
 }
 
 __PACKAGE__->NAME;

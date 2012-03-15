@@ -45,6 +45,7 @@ sub result {
 
     Bugzilla::Extension::Push::LogEntry->create({
         message_id   => $message->message_id,
+        routing_key  => $message->routing_key,
         connector    => $connector->name,
         push_ts      => $message->push_ts,
         processed_ts => Bugzilla->dbh->selectrow_array('SELECT NOW()'),

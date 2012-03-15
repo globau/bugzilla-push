@@ -26,6 +26,7 @@ use constant DB_COLUMNS => qw(
     message_id
     push_ts
     payload
+    routing_key
     connector
     attempt_ts
     attempts
@@ -36,9 +37,10 @@ use constant UPDATE_COLUMNS => qw(
 );
 use constant LIST_ORDER => 'push_ts';
 use constant VALIDATORS => {
-    payload   => \&_check_payload,
-    connector => \&_check_connector,
-    attempts  => \&_check_attempts,
+    payload     => \&_check_payload,
+    routing_key => \&_check_routing_key,
+    connector   => \&_check_connector,
+    attempts    => \&_check_attempts,
 };
 
 #
@@ -51,6 +53,7 @@ sub create_from_message {
         message_id => $message->id,
         push_ts => $message->push_ts,
         payload => $message->payload,
+        routing_key => $message->routing_key,
         connector => $connector->name,
         attempt_ts => undef,
         attempts => 0,
@@ -62,12 +65,13 @@ sub create_from_message {
 # accessors
 #
 
-sub message_id { return $_[0]->{'message_id'}  }
-sub push_ts    { return $_[0]->{'push_ts'};    }
-sub payload    { return $_[0]->{'payload'};    }
-sub connector  { return $_[0]->{'connector'};  }
-sub attempt_ts { return $_[0]->{'attempt_ts'}; }
-sub attempts   { return $_[0]->{'attempts'};   }
+sub message_id  { return $_[0]->{'message_id'}   }
+sub push_ts     { return $_[0]->{'push_ts'};     }
+sub payload     { return $_[0]->{'payload'};     }
+sub routing_key { return $_[0]->{'routing_key'}; }
+sub connector   { return $_[0]->{'connector'};   }
+sub attempt_ts  { return $_[0]->{'attempt_ts'};  }
+sub attempts    { return $_[0]->{'attempts'};    }
 
 sub attempt_time {
     my ($self) = @_;
@@ -95,6 +99,12 @@ sub inc_attempts {
 sub _check_payload {
     my ($invocant, $value) = @_;
     length($value) || ThrowCodeError('push_invalid_payload');
+    return $value;
+}
+
+sub _check_routing_key {
+    my ($invocant, $value) = @_;
+    (defined($value) && length($value)) || ThrowCodeError('push_invalid_routing_key');
     return $value;
 }
 

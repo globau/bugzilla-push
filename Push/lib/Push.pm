@@ -79,6 +79,7 @@ sub push {
 
             # if the connector is backlogged, push to the backlog queue
             if ($is_backlogged) {
+                $logger->debug("backlogged");
                 my $backlog = Bugzilla::Extension::Push::BacklogMessage->create_from_message($message, $connector);
                 $backlog->inc_attempts;
             }
@@ -170,15 +171,16 @@ sub set_config_last_modified {
 sub get_oldest_message {
     my ($self) = @_;
     my $dbh = Bugzilla->dbh;
-    my ($id, $push_ts, $payload) = $dbh->selectrow_array("
-        SELECT id, push_ts, payload
+    my ($id, $push_ts, $payload, $routing_key) = $dbh->selectrow_array("
+        SELECT id, push_ts, payload, routing_key
           FROM push
          ORDER BY push_ts " .
         $dbh->sql_limit(1)) or return;
     my $message = Bugzilla::Extension::Push::Message->new({
-        id => $id,
-        push_ts => $push_ts,
-        payload => $payload,
+        id          => $id,
+        push_ts     => $push_ts,
+        payload     => $payload,
+        routing_key => $routing_key,
     });
     return $message;
 }

@@ -73,8 +73,8 @@ sub backlog_count {
 sub get_oldest_backlog {
     my ($self) = @_;
     my $dbh = Bugzilla->dbh;
-    my ($id, $message_id, $push_ts, $payload, $attempt_ts, $attempts) = $dbh->selectrow_array("
-        SELECT log.id, message_id, push_ts, payload, attempt_ts, log.attempts
+    my ($id, $message_id, $push_ts, $payload, $routing_key, $attempt_ts, $attempts) = $dbh->selectrow_array("
+        SELECT log.id, message_id, push_ts, payload, routing_key, attempt_ts, log.attempts
           FROM push_backlog log
                LEFT JOIN push_backoff off ON off.connector = log.connector
          WHERE log.connector = ?
@@ -87,13 +87,14 @@ sub get_oldest_backlog {
         undef,
         $self->name) or return;
     my $message = Bugzilla::Extension::Push::BacklogMessage->new({
-        id => $id,
-        message_id => $message_id,
-        push_ts => $push_ts,
-        payload => $payload,
-        connector => $self->name,
-        attempt_ts => $attempt_ts,
-        attempts => $attempts,
+        id          => $id,
+        message_id  => $message_id,
+        push_ts     => $push_ts,
+        payload     => $payload,
+        routing_key => $routing_key,
+        connector   => $self->name,
+        attempt_ts  => $attempt_ts,
+        attempts    => $attempts,
     });
     return $message;
 }
