@@ -67,6 +67,9 @@ sub admin_config {
 
 sub admin_queues {
     my ($vars) = @_;
+    my $push = Bugzilla->push_ext;
+
+    $vars->{push} = $push;
 }
 
 sub admin_log {

@@ -8,8 +8,54 @@
 
 [% PROCESS global/header.html.tmpl
   title = "Push Administration: Queues"
+  javascript_urls = [ 'extensions/Push/web/admin.js' ]
+  style_urls = [ 'extensions/Push/web/admin.css' ]
 %]
 
-queues goes here
+<table id="report" cellspacing="0">
+
+[% PROCESS show_queue
+           queue = push.queue
+           title = 'Unprocessed'
+%]
+
+[% FOREACH connector = push.connectors.list %]
+  [% NEXT UNLESS connector.enabled %]
+  [% PROCESS show_queue
+             queue = connector.backlog
+             title = connector.name _ ' Backlog'
+  %]
+[% END %]
+
+</table>
 
 [% INCLUDE global/footer.html.tmpl %]
+
+[% BLOCK show_queue %]
+  [% count = queue.count %]
+  <tr class="report-header">
+    <th colspan="5">
+      [% title FILTER html %] Queue ([% count FILTER html %])
+    </th>
+  </tr>
+
+  [% IF count %]
+    <tr class="report-subheader">
+      <th nowrap>Timestamp</th>
+      <th nowrap>Last Attempt</th>
+      <th nowrap>Attempts</th>
+      <th nowrap>Routing Key</th>
+      <th>&nbsp;</th>
+    </tr>
+  [% END %]
+
+  [% FOREACH message = queue.list(10) %]
+    <tr class="row [% loop.count % 2 == 1 ? "report_row_odd" : "report_row_even" %]">
+      <td nowrap>[% message.push_ts FILTER html %]</td>
+      <td nowrap>[% message.attempt_ts || '-' FILTER html %]</td>
+      <td nowrap>[% message.attempts || '-' FILTER html %]</td>
+      <td nowrap>[% message.routing_key FILTER html %]</td>
+      <td align="right" width="100%">View Payload | Delete</td>
+    </tr>
+  [% END %]
+[% END %]

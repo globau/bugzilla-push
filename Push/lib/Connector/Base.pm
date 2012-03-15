@@ -13,6 +13,7 @@ use warnings;
 use Bugzilla;
 use Bugzilla::Extension::Push::ConnectorConfig;
 use Bugzilla::Extension::Push::BacklogMessage;
+use Bugzilla::Extension::Push::BacklogQueue;
 use Bugzilla::Extension::Push::Backoff;
 
 sub new {
@@ -56,48 +57,38 @@ sub options {
 }
 
 #
-# backlog
+#
 #
 
-sub backlog_count {
+sub config {
     my ($self) = @_;
-    my $dbh = Bugzilla->dbh;
-    return $dbh->selectrow_array("
-        SELECT COUNT(*)
-          FROM push_backlog
-         WHERE connector = ?",
-        undef,
-        $self->name);
+    if (!$self->{config}) {
+        $self->load_config();
+    }
+    return $self->{config};
 }
 
-sub get_oldest_backlog {
+sub load_config {
     my ($self) = @_;
-    my $dbh = Bugzilla->dbh;
-    my ($id, $message_id, $push_ts, $payload, $routing_key, $attempt_ts, $attempts) = $dbh->selectrow_array("
-        SELECT log.id, message_id, push_ts, payload, routing_key, attempt_ts, log.attempts
-          FROM push_backlog log
-               LEFT JOIN push_backoff off ON off.connector = log.connector
-         WHERE log.connector = ?
-               AND (
-                (next_attempt_ts IS NULL)
-                OR (next_attempt_ts <= NOW())
-               )
-         ORDER BY push_ts " .
-         $dbh->sql_limit(1),
-        undef,
-        $self->name) or return;
-    my $message = Bugzilla::Extension::Push::BacklogMessage->new({
-        id          => $id,
-        message_id  => $message_id,
-        push_ts     => $push_ts,
-        payload     => $payload,
-        routing_key => $routing_key,
-        connector   => $self->name,
-        attempt_ts  => $attempt_ts,
-        attempts    => $attempts,
-    });
-    return $message;
+    my $config = Bugzilla::Extension::Push::ConnectorConfig->new($self);
+    $config->load();
+    $self->{config} = $config;
 }
+
+sub enabled {
+    my ($self) = @_;
+    return $self->config->{enabled} eq 'Enabled';
+}
+
+sub backlog {
+    my ($self) = @_;
+    $self->{backlog} ||= Bugzilla::Extension::Push::BacklogQueue->new($self->name);
+    return $self->{backlog};
+}
+
+#
+# backoff
+#
 
 sub backoff {
     my ($self) = @_;
@@ -122,26 +113,6 @@ sub inc_backoff {
     my $backoff = $self->backoff;
     $backoff->inc();
     $backoff->update();
-}
-
-sub config {
-    my ($self) = @_;
-    if (!$self->{config}) {
-        $self->load_config();
-    }
-    return $self->{config};
-}
-
-sub load_config {
-    my ($self) = @_;
-    my $config = Bugzilla::Extension::Push::ConnectorConfig->new($self);
-    $config->load();
-    $self->{config} = $config;
-}
-
-sub enabled {
-    my ($self) = @_;
-    return $self->config->{enabled} eq 'Enabled';
 }
 
 1;

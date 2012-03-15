@@ -16,6 +16,7 @@ use Bugzilla::Extension::Push::Constants;
 use Bugzilla::Extension::Push::Logger;
 use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::Option;
+use Bugzilla::Extension::Push::Queue;
 use DateTime;
 
 sub new {
@@ -59,7 +60,7 @@ sub push {
     $logger->debug("polling");
 
     # process each message
-    while(my $message = $self->get_oldest_message) {
+    while(my $message = $self->queue->oldest) {
         foreach my $connector ($connectors->list) {
             next unless $connector->enabled;
             $logger->debug("pushing to " . $connector->name);
@@ -92,7 +93,7 @@ sub push {
     # process backlog
     foreach my $connector ($connectors->list) {
         next unless $connector->enabled;
-        my $message = $connector->get_oldest_backlog();
+        my $message = $connector->backlog->oldest();
         next unless $message;
 
         $logger->debug("processing backlog for " . $connector->name);
@@ -110,7 +111,7 @@ sub push {
             # message was processed
             $message->remove_from_db();
             
-            $message = $connector->get_oldest_backlog();
+            $message = $connector->backlog->oldest();
         }
     }
 }
@@ -168,23 +169,6 @@ sub set_config_last_modified {
     return $now;
 }
 
-sub get_oldest_message {
-    my ($self) = @_;
-    my $dbh = Bugzilla->dbh;
-    my ($id, $push_ts, $payload, $routing_key) = $dbh->selectrow_array("
-        SELECT id, push_ts, payload, routing_key
-          FROM push
-         ORDER BY push_ts " .
-        $dbh->sql_limit(1)) or return;
-    my $message = Bugzilla::Extension::Push::Message->new({
-        id          => $id,
-        push_ts     => $push_ts,
-        payload     => $payload,
-        routing_key => $routing_key,
-    });
-    return $message;
-}
-
 sub logger {
     my ($self, $value) = @_;
     $self->{logger} = $value if $value;
@@ -195,6 +179,12 @@ sub connectors {
     my ($self, $value) = @_;
     $self->{connectors} = $value if $value;
     return $self->{connectors};
+}
+
+sub queue {
+    my ($self) = @_;
+    $self->{queue} ||= Bugzilla::Extension::Push::Queue->new();
+    return $self->{queue};
 }
 
 1;

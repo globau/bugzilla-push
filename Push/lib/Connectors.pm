@@ -95,7 +95,7 @@ sub names {
 sub list {
     my ($self) = @_;
     $self->_load();
-    return values %{$self->{objects}};
+    return sort { $a->name cmp $b->name } values %{$self->{objects}};
 }
 
 sub exists {
