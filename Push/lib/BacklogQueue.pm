@@ -34,27 +34,38 @@ sub count {
 
 sub oldest {
     my ($self) = @_;
-    my @messages = $self->list(1);
+    my @messages = $self->list(
+        limit => 1,
+        filter => 'AND ((next_attempt_ts IS NULL) OR (next_attempt_ts <= NOW()))',
+    );
+    return scalar(@messages) ? $messages[0] : undef;
+}
+
+sub by_id {
+    my ($self, $id) = @_;
+    my @messages = $self->list(
+        limit => 1,
+        filter => "AND (log.id = $id)",
+    );
     return scalar(@messages) ? $messages[0] : undef;
 }
 
 sub list {
-    my ($self, $limit) = @_;
-    $limit ||= 10;
+    my ($self, %args) = @_;
+    $args{limit} ||= 10;
+    $args{filter} ||= '';
     my @result;
     my $dbh = Bugzilla->dbh;
 
+    my $filter_sql = $args{filter} || '';
     my $sth = $dbh->prepare("
         SELECT log.id, message_id, push_ts, payload, routing_key, attempt_ts, log.attempts
           FROM push_backlog log
                LEFT JOIN push_backoff off ON off.connector = log.connector
-         WHERE log.connector = ?
-               AND (
-                (next_attempt_ts IS NULL)
-                OR (next_attempt_ts <= NOW())
-               )
+         WHERE log.connector = ? ".
+               $args{filter} . "
          ORDER BY push_ts " .
-         $dbh->sql_limit($limit)
+         $dbh->sql_limit($args{limit})
     );
     $sth->execute($self->{connector});
     while (my $row = $sth->fetchrow_hashref()) {
@@ -70,6 +81,46 @@ sub list {
         });
     }
     return @result;
+}
+
+#
+# backoff
+#
+
+sub backoff {
+    my ($self) = @_;
+    if (!$self->{backoff}) {
+        my $ra = Bugzilla::Extension::Push::Backoff->match({
+            connector => $self->{connector}
+        });
+        if (@$ra) {
+            $self->{backoff} = $ra->[0];
+        } else {
+            $self->{backoff} = Bugzilla::Extension::Push::Backoff->create({
+                connector => $self->{connector}
+            });
+        }
+    }
+    return $self->{backoff};
+}
+
+sub reset_backoff {
+    my ($self) = @_;
+    my $backoff = $self->backoff;
+    $backoff->reset();
+    $backoff->update();
+}
+
+sub inc_backoff {
+    my ($self) = @_;
+    my $backoff = $self->backoff;
+    $backoff->inc();
+    $backoff->update();
+}
+
+sub connector {
+    my ($self) = @_;
+    return $self->{connector};
 }
 
 1;

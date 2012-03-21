@@ -105,7 +105,8 @@ sub exists {
 
 sub by_name {
     my ($self, $name) = @_;
-    return grep { $_ eq $name } $self->names;
+    return unless exists $self->{objects}->{$name};
+    return $self->{objects}->{$name};
 }
 
 1;

@@ -28,21 +28,33 @@ sub count {
 
 sub oldest {
     my ($self) = @_;
-    my @messages = $self->list(1);
+    my @messages = $self->list(limit => 1);
+    return scalar(@messages) ? $messages[0] : undef;
+}
+
+sub by_id {
+    my ($self, $id) = @_;
+    my @messages = $self->list(
+        limit => 1,
+        filter => "AND (push.id = $id)",
+    );
     return scalar(@messages) ? $messages[0] : undef;
 }
 
 sub list {
-    my ($self, $limit) = @_;
-    $limit ||= 10;
+    my ($self, %args) = @_;
+    $args{limit} ||= 10;
+    $args{filter} ||= '';
     my @result;
     my $dbh = Bugzilla->dbh;
 
     my $sth = $dbh->prepare("
         SELECT id, push_ts, payload, routing_key
           FROM push
+         WHERE (1 = 1) " .
+               $args{filter} . "
          ORDER BY push_ts " .
-         $dbh->sql_limit($limit)
+         $dbh->sql_limit($args{limit})
     );
     $sth->execute();
     while (my $row = $sth->fetchrow_hashref()) {

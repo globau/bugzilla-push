@@ -16,7 +16,8 @@
 
 [% PROCESS show_queue
            queue = push.queue
-           title = 'Unprocessed'
+           title = 'Pending'
+         pending = 1
 %]
 
 [% FOREACH connector = push.connectors.list %]
@@ -24,6 +25,7 @@
   [% PROCESS show_queue
              queue = connector.backlog
              title = connector.name _ ' Backlog'
+           pending = 0
   %]
 [% END %]
 
@@ -34,28 +36,65 @@
 [% BLOCK show_queue %]
   [% count = queue.count %]
   <tr class="report-header">
-    <th colspan="5">
+    <th colspan="2">
       [% title FILTER html %] Queue ([% count FILTER html %])
     </th>
+    [% IF queue.backoff && count %]
+      <th class="rhs" colspan="4">
+        Next Attempt: [% queue.backoff.next_attempt_ts FILTER time %]
+      </th>
+    [% ELSE %]
+      <th colspan="4">&nbsp;</td>
+    [% END %]
   </tr>
 
   [% IF count %]
     <tr class="report-subheader">
       <th nowrap>Timestamp</th>
-      <th nowrap>Last Attempt</th>
-      <th nowrap>Attempts</th>
-      <th nowrap>Routing Key</th>
+      [% IF pending %]
+        <th nowrap colspan="4">Routing Key</th>
+      [% ELSE %]
+        <th nowrap>Routing Key</th>
+        <th nowrap>Last Attempt</th>
+        <th nowrap>Attempts</th>
+        <th nowrap>Last Error</th>
+      [% END %]
       <th>&nbsp;</th>
     </tr>
   [% END %]
 
-  [% FOREACH message = queue.list(10) %]
+  [% FOREACH message = queue.list('limit', 10) %]
     <tr class="row [% loop.count % 2 == 1 ? "report_row_odd" : "report_row_even" %]">
       <td nowrap>[% message.push_ts FILTER html %]</td>
-      <td nowrap>[% message.attempt_ts || '-' FILTER html %]</td>
-      <td nowrap>[% message.attempts || '-' FILTER html %]</td>
-      <td nowrap>[% message.routing_key FILTER html %]</td>
-      <td align="right" width="100%">View Payload | Delete</td>
+      [% IF pending %]
+        <td nowrap colspan="4">[% message.routing_key FILTER html %]</td>
+      [% ELSE %]
+        <td nowrap>[% message.routing_key FILTER html %]</td>
+        [% IF message.attempt_ts %]
+          <td nowrap>[% message.attempt_ts FILTER time %]</td>
+          <td nowrap>[% message.attempts FILTER html %]</td>
+          <td width="100%">
+            [% IF message.last_error.length > 40 %]
+              [% last_error = message.last_error.substr(0, 40) _ '...' %]
+            [% ELSE %]
+              [% last_error = message.last_error %]
+            [% END %]
+            [% last_error FILTER html %]</td>
+        [% ELSE %]
+          <td>-</td>
+          <td>-</td>
+          <td width="100%">-</td>
+        [% END %]
+      [% END %]
+      <td class="rhs">
+        <a href="?id=push_queues_view.html&amp;[% ~%]
+                  message=[% message.id FILTER url_quote %]&amp;[% ~%]
+                  connector=[% queue.connector FILTER url_quote %]">View</a>
+      </td>
     </tr>
   [% END %]
+
+  <tr>
+    <td colspan="6">&nbsp;</td>
+  </tr>
 [% END %]

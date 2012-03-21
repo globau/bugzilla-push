@@ -30,10 +30,12 @@ use constant DB_COLUMNS => qw(
     connector
     attempt_ts
     attempts
+    last_error
 );
 use constant UPDATE_COLUMNS => qw(
     attempt_ts
     attempts
+    last_error
 );
 use constant LIST_ORDER => 'push_ts';
 use constant VALIDATORS => {
@@ -57,6 +59,7 @@ sub create_from_message {
         connector => $connector->name,
         attempt_ts => undef,
         attempts => 0,
+        last_error => undef,
     });
     return $self;
 }
@@ -72,6 +75,7 @@ sub routing_key { return $_[0]->{'routing_key'}; }
 sub connector   { return $_[0]->{'connector'};   }
 sub attempt_ts  { return $_[0]->{'attempt_ts'};  }
 sub attempts    { return $_[0]->{'attempts'};    }
+sub last_error  { return $_[0]->{'last_error'};  }
 
 sub attempt_time {
     my ($self) = @_;
@@ -86,9 +90,10 @@ sub attempt_time {
 #
 
 sub inc_attempts {
-    my ($self) = @_;
+    my ($self, $error) = @_;
     $self->{attempt_ts} = Bugzilla->dbh->selectrow_array('SELECT NOW()');
     $self->{attempts} = $self->{attempts} + 1;
+    $self->{last_error} = $error;
     $self->update;
 }
 

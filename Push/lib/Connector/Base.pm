@@ -11,7 +11,7 @@ use strict;
 use warnings;
 
 use Bugzilla;
-use Bugzilla::Extension::Push::ConnectorConfig;
+use Bugzilla::Extension::Push::Config;
 use Bugzilla::Extension::Push::BacklogMessage;
 use Bugzilla::Extension::Push::BacklogQueue;
 use Bugzilla::Extension::Push::Backoff;
@@ -70,7 +70,7 @@ sub config {
 
 sub load_config {
     my ($self) = @_;
-    my $config = Bugzilla::Extension::Push::ConnectorConfig->new($self);
+    my $config = Bugzilla::Extension::Push::Config->new($self->name, $self->options);
     $config->load();
     $self->{config} = $config;
 }
@@ -84,35 +84,6 @@ sub backlog {
     my ($self) = @_;
     $self->{backlog} ||= Bugzilla::Extension::Push::BacklogQueue->new($self->name);
     return $self->{backlog};
-}
-
-#
-# backoff
-#
-
-sub backoff {
-    my ($self) = @_;
-    my $ra = Bugzilla::Extension::Push::Backoff->match({
-        connector => $self->name
-    });
-    return $ra->[0] if @$ra;
-    return Bugzilla::Extension::Push::Backoff->create({
-        connector => $self->name
-    });
-}
-
-sub reset_backoff {
-    my ($self) = @_;
-    my $backoff = $self->backoff;
-    $backoff->reset();
-    $backoff->update();
-}
-
-sub inc_backoff {
-    my ($self) = @_;
-    my $backoff = $self->backoff;
-    $backoff->inc();
-    $backoff->update();
 }
 
 1;

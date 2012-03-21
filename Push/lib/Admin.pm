@@ -13,7 +13,8 @@ use warnings;
 use Bugzilla;
 use Bugzilla::Error;
 use Bugzilla::Extension::Push::Util;
-use Bugzilla::Util qw(trim);
+use Bugzilla::Util qw(trim detaint_natural);
+use JSON qw(-convert_blessed_universally);
 
 use base qw(Exporter);
 our @EXPORT = qw(
@@ -30,46 +31,88 @@ sub admin_config {
     if ($input->{save}) {
         my $dbh = Bugzilla->dbh;
         $dbh->bz_start_transaction();
+        _update_config_from_form('global', $push->config);
         foreach my $connector ($push->connectors->list) {
-            my $config = $connector->config;
-
-            # read values from form
-            my $values = {};
-            foreach my $option ($config->options) {
-                my $name = $option->{name};
-                $values->{$name} = trim($input->{$connector->name . ".$name"});
-            }
-
-            # validate
-            if ($values->{enabled} eq 'Enabled') {
-                eval {
-                    $config->validate($values);
-                };
-                if ($@) {
-                    ThrowUserError('push_error', { error_message => clean_error($@) });
-                }
-            }
-
-            # update
-            foreach my $option ($config->options) {
-                my $name = $option->{name};
-                $config->{$name} = $values->{$name};
-            }
-            $config->update();
+            _update_config_from_form($connector->name, $connector->config);
         }
         $push->set_config_last_modified();
         $dbh->bz_commit_transaction();
         $vars->{message} = 'push_config_updated';
     }
 
+    $vars->{push} = $push;
     $vars->{connectors} = $push->connectors;
 }
 
-sub admin_queues {
-    my ($vars) = @_;
-    my $push = Bugzilla->push_ext;
+sub _update_config_from_form {
+    my ($name, $config) = @_;
+    my $input = Bugzilla->input_params;
 
-    $vars->{push} = $push;
+    # read values from form
+    my $values = {};
+    foreach my $option ($config->options) {
+        my $option_name = $option->{name};
+        $values->{$option_name} = trim($input->{$name . ".$option_name"});
+    }
+
+    # validate
+    if ($values->{enabled} eq 'Enabled') {
+        eval {
+            $config->validate($values);
+        };
+        if ($@) {
+            ThrowUserError('push_error', { error_message => clean_error($@) });
+        }
+    }
+
+    # update
+    foreach my $option ($config->options) {
+        my $option_name = $option->{name};
+        $config->{$option_name} = $values->{$option_name};
+    }
+    $config->update();
+}
+
+sub admin_queues {
+    my ($vars, $page) = @_;
+    my $push = Bugzilla->push_ext;
+    my $input = Bugzilla->input_params;
+
+    if ($page eq 'push_queues.html') {
+        $vars->{push} = $push;
+
+    } elsif ($page eq 'push_queues_view.html') {
+        my $queue;
+        if ($input->{connector}) {
+            my $connector = $push->connectors->by_name($input->{connector})
+                || ThrowUserError('push_error', { error_message => 'Invalid connector' });
+            $queue = $connector->backlog;
+        } else {
+            $queue = $push->queue;
+        }
+        $vars->{queue} = $queue;
+
+        my $id = $input->{message} || 0;
+        detaint_natural($id)
+            || ThrowUserError('push_error', { error_message => 'Invalid message ID' });
+        my $message = $queue->by_id($id)
+            || ThrowUserError('push_error', { error_message => 'Invalid message ID' });
+
+        if ($input->{delete}) {
+            $message->remove_from_db();
+            $vars->{message} = 'push_message_deleted';
+
+        } else {
+            $vars->{message_obj} = $message;
+
+            my $json = JSON->new();
+            $json->shrink(0);
+            $json->canonical(1);
+            eval {
+                $vars->{json} = $json->pretty->encode($json->decode($message->payload));
+            };
+        }
+    }
 }
 
 sub admin_log {

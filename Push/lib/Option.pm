@@ -56,6 +56,7 @@ sub set_value { $_[0]->{'option_value'} = $_[1]; }
 sub _check_connector {
     my ($invocant, $value) = @_;
     $value eq '*'
+        || $value eq 'global'
         || Bugzilla->push_ext->connectors->exists($value)
         || ThrowCodeError('push_invalid_connector');
     return $value;

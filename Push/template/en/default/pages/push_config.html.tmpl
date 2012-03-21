@@ -14,6 +14,11 @@
 
 <script>
 var push_defaults = new Array();
+[% FOREACH option = push.config.options %]
+  [% IF option.name != 'enabled' && option.default != '' %]
+    push_defaults['global_[% option.name FILTER js %]'] = '[% option.default FILTER js %]';
+  [% END %]
+[% END %]
 [% FOREACH connector = connectors.list %]
   [% FOREACH option = connector.config.options %]
     [% IF option.name != 'enabled' && option.default != '' %]
@@ -23,63 +28,22 @@ var push_defaults = new Array();
 [% END %]
 </script>
 
-<p>
-Available Push connectors:
-</p>
-
 <form method="POST" action="page.cgi">
 <input type="hidden" name="id" value="push_config.html">
 <input type="hidden" name="save" value="1">
 
 <table border="0" cellspacing="0" cellpadding="5" width="100%">
 
+[% PROCESS options
+           name = 'global',
+           config = push.config
+%]
+
 [% FOREACH connector = connectors.list %]
-  <tr class="connector">
-    <th>[% connector.name FILTER html %]</th>
-    <td><hr></td>
-  </tr>
-  [% FOREACH option = connector.config.options %]
-    [% class = connector.name _ '_tr' IF option.name != 'enabled' %]
-    <tr class="[% class FILTER html %] option">
-      <th>
-        [% IF option.required %]
-          <span class="required_option" title="Mandatory option">*</span>&nbsp;
-        [% END %]
-        [% option.label FILTER html %]
-      </th>
-      <td>
-
-        [% IF option.type == 'string' %]
-          <input type="text" name="[% connector.name FILTER html %].[% option.name FILTER html %]"
-                 value="[% connector.config.${option.name} FILTER html %]" size="60"
-                 id="[% connector.name FILTER html %]_[% option.name FILTER html %]">
-        [% ELSIF option.type == 'select' %]
-          <select name="[% connector.name FILTER html %].[% option.name FILTER html %]"
-                  id="[% connector.name FILTER html %]_[% option.name FILTER html %]"
-            [% IF option.name == 'enabled' %]
-              onchange="toggle_options(this.value == 'Enabled', '[% connector.name FILTER js %]')"
-            [% END %]
-          >
-            [% IF option.name != 'enabled' && !option.required %]
-              <option value="""
-               [% ' selected' IF connector.config.${option.name} == "" %]></option>
-            [% END %]
-            [% FOREACH value = option.values %]
-              <option value="[% value FILTER html %]"
-               [% ' selected' IF connector.config.${option.name} == value %]>[% value FILTER html %]</option>
-            [% END %]
-          </select>
-
-        [% ELSE %]
-          unsupported option type
-        [% END %]
-      </td>
-    </tr>
-  [% END %]
-  <script>
-    var is_enabled = document.getElementById('[% connector.name FILTER js %]_enabled').value == 'Enabled';
-    toggle_options(is_enabled, '[% connector.name FILTER js %]');
-  </script>
+  [% PROCESS options
+             name = connector.name
+             config = connector.config
+  %]
 [% END %]
 
 <tr>
@@ -106,3 +70,52 @@ Available Push connectors:
 </form>
 
 [% INCLUDE global/footer.html.tmpl %]
+
+[% BLOCK options %]
+  <tr class="connector">
+    <th>[% name FILTER ucfirst FILTER html %]</th>
+    <td><hr></td>
+  </tr>
+  [% FOREACH option = config.options %]
+    [% class = name _ '_tr' IF option.name != 'enabled' %]
+    <tr class="[% class FILTER html %] option">
+      <th>
+        [% IF option.required %]
+          <span class="required_option" title="Mandatory option">*</span>&nbsp;
+        [% END %]
+        [% option.label FILTER html %]
+      </th>
+      <td>
+        [% IF option.type == 'string' %]
+          <input type="text" name="[% name FILTER html %].[% option.name FILTER html %]"
+                 value="[% config.${option.name} FILTER html %]" size="60"
+                 id="[% name FILTER html %]_[% option.name FILTER html %]">
+        [% ELSIF option.type == 'select' %]
+          <select name="[% name FILTER html %].[% option.name FILTER html %]"
+                  id="[% name FILTER html %]_[% option.name FILTER html %]"
+            [% IF option.name == 'enabled' && name != 'global' %]
+              onchange="toggle_options(this.value == 'Enabled', '[% name FILTER js %]')"
+            [% END %]
+          >
+            [% IF option.name != 'enabled' && !option.required %]
+              <option value="""
+               [% ' selected' IF config.${option.name} == "" %]></option>
+            [% END %]
+            [% FOREACH value = option.values %]
+              <option value="[% value FILTER html %]"
+               [% ' selected' IF config.${option.name} == value %]>[% value FILTER html %]</option>
+            [% END %]
+          </select>
+        [% ELSE %]
+          unsupported option type '[% option.type FILTER html %]'
+        [% END %]
+      </td>
+    </tr>
+  [% END %]
+  [% IF name != 'global' %]
+    <script>
+      var is_enabled = document.getElementById('[% name FILTER js %]_enabled').value == 'Enabled';
+      toggle_options(is_enabled, '[% name FILTER js %]');
+    </script>
+  [% END %]
+[% END %]

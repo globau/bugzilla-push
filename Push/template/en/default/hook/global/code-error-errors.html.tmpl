@@ -10,7 +10,7 @@
   [% title = "Invalid payload" %]
   An invalid or empty payload was passed to Push.
 
-[% IF error == "push_invalid_routing_key" %]
+[% ELSIF error == "push_invalid_routing_key" %]
   [% title = "Invalid routing_key" %]
   An invalid or empty routing_key was passed to Push.
 

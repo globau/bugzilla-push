@@ -13,6 +13,7 @@ use warnings;
 use base qw(Bugzilla::Extension);
 
 use Bugzilla::Constants;
+use Bugzilla::Error;
 use Bugzilla::Extension::Push::Admin;
 use Bugzilla::Extension::Push::Connectors;
 use Bugzilla::Extension::Push::Logger;
@@ -55,11 +56,16 @@ sub _get_instance {
 sub _enabled {
     my ($self) = @_;
     if (!exists $self->{'enabled'}) {
-        $self->{'enabled'} = 0;
-        foreach my $connector (Bugzilla->push_ext->connectors->list) {
-            if ($connector->enabled) {
-                $self->{enabled} = 1;
-                last;
+        my $push = Bugzilla->push_ext;
+        $self->{'enabled'} = $push->config->{enabled} eq 'Enabled';
+        if ($self->{'enabled'}) {
+            # if no connectors are enabled, no need to push anything
+            $self->{'enabled'} = 0;
+            foreach my $connector (Bugzilla->push_ext->connectors->list) {
+                if ($connector->enabled) {
+                    $self->{'enabled'} = 1;
+                    last;
+                }
             }
         }
     }
@@ -351,10 +357,29 @@ sub page_before_template {
     my $vars = $args->{'vars'};
 
     if ($page eq 'push_config.html') {
+        Bugzilla->user->in_group('admin')
+            || ThrowUserError('auth_failure',
+                              { group  => 'admin',
+                                action => 'access',
+                                object => 'administrative_pages' });
         admin_config($vars);
-    } elsif ($page eq 'push_queues.html') {
-        admin_queues($vars);
+
+    } elsif ($page eq 'push_queues.html'
+             || $page eq 'push_queues_view.html'
+    ) {
+        Bugzilla->user->in_group('admin')
+            || ThrowUserError('auth_failure',
+                              { group  => 'admin',
+                                action => 'access',
+                                object => 'administrative_pages' });
+        admin_queues($vars, $page);
+
     } elsif ($page eq 'push_log.html') {
+        Bugzilla->user->in_group('admin')
+            || ThrowUserError('auth_failure',
+                              { group  => 'admin',
+                                action => 'access',
+                                object => 'administrative_pages' });
         admin_log($vars);
     }
 }
@@ -419,6 +444,9 @@ sub db_schema_abstract_schema {
             attempts => {
                 TYPE => 'INT2',
                 NOTNULL => 1,
+            },
+            last_error => {
+                TYPE => 'MEDIUMTEXT',
             },
         ],
         INDEXES => [

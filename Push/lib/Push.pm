@@ -11,6 +11,7 @@ use strict;
 use warnings;
 
 use Bugzilla::Extension::Push::BacklogMessage;
+use Bugzilla::Extension::Push::Config;
 use Bugzilla::Extension::Push::Connectors;
 use Bugzilla::Extension::Push::Constants;
 use Bugzilla::Extension::Push::Logger;
@@ -33,7 +34,7 @@ sub start {
     $self->{config_last_checked} = (time);
 
     foreach my $connector ($connectors->list) {
-        $connector->reset_backoff();
+        $connector->backlog->reset_backoff();
     }
 
     while(1) {
@@ -65,7 +66,7 @@ sub push {
             next unless $connector->enabled;
             $logger->debug("pushing to " . $connector->name);
 
-            my $is_backlogged = $connector->backlog_count;
+            my $is_backlogged = $connector->backlog->count;
 
             if (!$is_backlogged) {
                 # connector isn't backlogged, immediate send
@@ -82,7 +83,6 @@ sub push {
             if ($is_backlogged) {
                 $logger->debug("backlogged");
                 my $backlog = Bugzilla::Extension::Push::BacklogMessage->create_from_message($message, $connector);
-                $backlog->inc_attempts;
             }
         }
 
@@ -99,12 +99,12 @@ sub push {
         $logger->debug("processing backlog for " . $connector->name);
         while ($message) {
             my($result, $error) = $connector->send($message);
-            $message->inc_attempts;
+            $message->inc_attempts($error);
             $logger->result($connector, $message, $result, $error);
 
             if ($result == PUSH_RESULT_TRANSIENT) {
                 # connector is still down, stop trying
-                $connector->inc_backoff();
+                $connector->backlog->inc_backoff();
                 last;
             }
 
@@ -167,6 +167,25 @@ sub set_config_last_modified {
         });
     }
     return $now;
+}
+
+sub config {
+    my ($self) = @_;
+    if (!$self->{config}) {
+        $self->{config} = Bugzilla::Extension::Push::Config->new(
+            'global',
+            {
+                name     => 'log_purge',
+                label    => 'Purge logs older than (days)',
+                type     => 'string',
+                default  => '7',
+                required => '1',
+                validate => sub { $_[0] =~ /\D/ && die "Invalid purge duration (must be numeric)\n"; },
+            },
+        );
+        $self->{config}->load();
+    }
+    return $self->{config};
 }
 
 sub logger {

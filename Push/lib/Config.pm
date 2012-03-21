@@ -5,7 +5,7 @@
 # This Source Code Form is "Incompatible With Secondary Licenses", as
 # defined by the Mozilla Public License, v. 2.0.
 
-package Bugzilla::Extension::Push::ConnectorConfig;
+package Bugzilla::Extension::Push::Config;
 
 use strict;
 use warnings;
@@ -13,13 +13,13 @@ use warnings;
 use Bugzilla::Extension::Push::Option;
 
 sub new {
-    my ($class, $connector) = @_;
+    my ($class, $name, @options) = @_;
     my $self = {
-        _connector => $connector
+        _name => $name
     };
     bless($self, $class);
 
-    $self->{_options} = [$connector->options];
+    $self->{_options} = [@options];
     unshift @{$self->{_options}}, {
         name     => 'enabled',
         label    => 'Status',
@@ -48,7 +48,7 @@ sub load {
 
     # override defaults with values from database
     my $options = Bugzilla::Extension::Push::Option->match({
-        connector => $self->{_connector}->name,
+        connector => $self->{_name},
     });
     foreach my $option (@$options) {
         $config->{$option->name} = $option->value;
@@ -59,7 +59,7 @@ sub load {
 
     # done, update self
     foreach my $name (keys %$config) {
-        $logger->debug(sprintf("%s: set %s=%s\n", $self->{_connector}->name, $name, $config->{$name}));
+        $logger->debug(sprintf("%s: set %s=%s\n", $self->{_name}, $name, $config->{$name}));
         $self->{$name} = $config->{$name};
     }
 }
@@ -77,7 +77,7 @@ sub update {
 
     my %options;
     my $options_list = Bugzilla::Extension::Push::Option->match({
-        connector => $self->{_connector}->name,
+        connector => $self->{_name},
     });
     foreach my $option (@$options_list) {
         $options{$option->name} = $option;
@@ -102,7 +102,7 @@ sub update {
     foreach my $name (@valid_options) {
         next if exists $options{$name};
         Bugzilla::Extension::Push::Option->create({
-            connector    => $self->{_connector}->name,
+            connector    => $self->{_name},
             option_name  => $name,
             option_value => $self->{$name},
         });
@@ -135,7 +135,7 @@ sub _validate_mandatory {
         }
     }
     if (@missing) {
-        my $connector = $self->{_connector}->name;
+        my $connector = $self->{_name};
         if (scalar @missing == 1) {
             die "The option '$missing[0]' for the connector '$connector' is mandatory\n";
         } else {
