@@ -22,13 +22,15 @@ use constant REQUIRED_MODULES => [
         module  => 'JSON::XS',
         version => '2.0'
     },
+];
+
+use constant OPTIONAL_MODULES => [
+    # this is required on the system which runs the daemon
     {
         package => 'Net--RabbitMQ',
         module  => 'Net::RabbitMQ',
         version => '0'
     },
 ];
-
-use constant OPTIONAL_MODULES => [ ];
 
 __PACKAGE__->NAME;

@@ -36,8 +36,8 @@ sub object_to_hash {
 
     # check for a cached hash
     my $cache = Bugzilla->request_cache;
-    my $cache_id = $object->can('id') ? "push.$name." . $object->id : undef;
-    if ($cache_id && exists($cache->{$cache_id})) {
+    my $cache_id = "push.$object";
+    if (exists($cache->{$cache_id})) {
         return wantarray ? ($cache->{$cache_id}, $name) : $cache->{$cache_id};
     }
 
@@ -237,7 +237,7 @@ sub _attachment {
         flags            => (mapr { $self->_flag($_) } $attachment->flags),
         is_obsolete      => _boolean($attachment->isobsolete),
         is_patch         => _boolean($attachment->ispatch),
-        is_private       => _boolean($attachment->isprivate),
+        is_private       => _boolean(!is_public($attachment)),
         last_change_time => _time($attachment->modification_time),
     };
 }

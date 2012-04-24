@@ -14,6 +14,7 @@ use Bugzilla::Constants;
 use Bugzilla::Util 'datetime_from';
 use Data::Dumper;
 use Scalar::Util 'blessed';
+use Time::HiRes;
 
 use base qw(Exporter);
 our @EXPORT = qw(
@@ -24,6 +25,7 @@ our @EXPORT = qw(
     is_public
     mapr
     clean_error
+    change_set_id
 );
 
 # returns true if the specified object is public
@@ -108,6 +110,11 @@ sub clean_error {
     $error = $1 if $error =~ /^(.+?) at \Q$path/s;
     $error =~ s/(^\s+|\s+$)//g;
     return $error;
+}
+
+# generate a new change_set id
+sub change_set_id {
+    return "$$." . Time::HiRes::time();
 }
 
 1;

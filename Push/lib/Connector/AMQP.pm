@@ -17,6 +17,7 @@ use Bugzilla::Extension::Push::Constants;
 use Bugzilla::Extension::Push::Util;
 use Bugzilla::Util qw(generate_random_password);
 use DateTime;
+use JSON;
 use Net::RabbitMQ;
 
 sub init {
@@ -148,7 +149,6 @@ sub _bind {
                 $self->{queue_name},
                 $config->{exchange},
                 $message->routing_key,
-                'routing_key'
             );
         };
         if ($@) {
@@ -163,6 +163,22 @@ sub send {
     my ($self, $message) = @_;
     my $logger = Bugzilla->push_ext->logger;
     my $config = $self->config;
+
+    # determine if this change causing the bug to change from private to public
+
+    my $payload = decode_json($message->payload);
+    my $target = $payload->{event}->{target};
+    my $is_private = $payload->{$target}->{is_private} ? 1 : 0;
+
+    if ($is_private) {
+        # we only want to push the is_private message from the change_set, as
+        # this is guaranteed to contain public information only
+        if ($message->routing_key !~ /\.modify\.is_private$/) {
+            $logger->debug('AMQP: Ignoring private message');
+            return PUSH_RESULT_IGNORED;
+        }
+        $logger->debug('AMQP: Sending change of message to is_private');
+    }
 
     $self->_bind($message);
 

@@ -40,17 +40,18 @@
       [% title FILTER html %] Queue ([% count FILTER html %])
     </th>
     [% IF queue.backoff && count %]
-      <th class="rhs" colspan="4">
+      <th class="rhs" colspan="5">
         Next Attempt: [% queue.backoff.next_attempt_ts FILTER time %]
       </th>
     [% ELSE %]
-      <th colspan="4">&nbsp;</td>
+      <th colspan="5">&nbsp;</td>
     [% END %]
   </tr>
 
   [% IF count %]
     <tr class="report-subheader">
       <th nowrap>Timestamp</th>
+      <th nowrap>Change Set</th>
       [% IF pending %]
         <th nowrap colspan="4">Routing Key</th>
       [% ELSE %]
@@ -66,6 +67,7 @@
   [% FOREACH message = queue.list('limit', 10) %]
     <tr class="row [% loop.count % 2 == 1 ? "report_row_odd" : "report_row_even" %]">
       <td nowrap>[% message.push_ts FILTER html %]</td>
+      <td nowrap>[% message.change_set FILTER html %]</td>
       [% IF pending %]
         <td nowrap colspan="4">[% message.routing_key FILTER html %]</td>
       [% ELSE %]
@@ -95,6 +97,6 @@
   [% END %]
 
   <tr>
-    <td colspan="6">&nbsp;</td>
+    <td colspan="7">&nbsp;</td>
   </tr>
 [% END %]

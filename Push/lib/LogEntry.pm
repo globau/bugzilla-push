@@ -23,6 +23,8 @@ use constant DB_TABLE => 'push_log';
 use constant DB_COLUMNS => qw(
     id
     message_id
+    change_set
+    routing_key
     connector
     push_ts
     processed_ts
@@ -38,6 +40,8 @@ use constant VALIDATORS => {
 #
 
 sub message_id   { return $_[0]->{'message_id'};   }
+sub change_set   { return $_[0]->{'change_set'};   }
+sub routing_key  { return $_[0]->{'routing_key'};  }
 sub connector    { return $_[0]->{'connector'};    }
 sub push_ts      { return $_[0]->{'push_ts'};      }
 sub processed_ts { return $_[0]->{'processed_ts'}; }

@@ -10,12 +10,12 @@
 use strict;
 use warnings;
 
+use FindBin '$RealBin';
+use lib "$RealBin/../../..";
+use lib "$RealBin/../../../lib";
+use lib "$RealBin/../lib";
+
 BEGIN {
-    use Cwd 'abs_path';
-    use File::Basename;
-    use lib abs_path(dirname(__FILE__) . '/../../..');
-    use lib abs_path(dirname(__FILE__) . '/../../../lib');
-    use lib abs_path(dirname(__FILE__) . '/../lib');
     use Bugzilla;
     Bugzilla->extensions;
 }
@@ -34,21 +34,21 @@ bugzilla-push.pl - Pushes changes queued by the Push extension to connectors.
     OPTIONS:
       -f        Run in the foreground (don't detach)
       -d        Output a lot of debugging information
-      -p file   Specify the file where jobqueue.pl should store its current
-                process id. Defaults to F<data/jobqueue.pl.pid>.
+      -p file   Specify the file where bugzilla-push.pl should store its current
+                process id. Defaults to F<data/bugzilla-push.pl.pid>.
       -n name   What should this process call itself in the system log?
                 Defaults to the full path you used to invoke the script.
 
     COMMANDS:
-      start     Starts a new jobqueue daemon if there isn't one running already
-      stop      Stops a running jobqueue daemon
-      restart   Stops a running jobqueue if one is running, and then
+      start     Starts a new bugzilla-push daemon if there isn't one running already
+      stop      Stops a running bugzilla-push daemon
+      restart   Stops a running bugzilla-push if one is running, and then
                 starts a new one.
       check     Report the current status of the daemon.
       install   On some *nix systems, this automatically installs and
-                configures jobqueue.pl as a system service so that it will
+                configures bugzilla-push.pl as a system service so that it will
                 start every time the machine boots.
-      uninstall Removes the system service for jobqueue.pl.
+      uninstall Removes the system service for bugzilla-push.pl.
       help      Display this usage info
 
 

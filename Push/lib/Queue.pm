@@ -49,7 +49,7 @@ sub list {
     my $dbh = Bugzilla->dbh;
 
     my $sth = $dbh->prepare("
-        SELECT id, push_ts, payload, routing_key
+        SELECT id, push_ts, payload, change_set, routing_key
           FROM push
          WHERE (1 = 1) " .
                $args{filter} . "
@@ -62,6 +62,7 @@ sub list {
             id          => $row->{id},
             push_ts     => $row->{push_ts},
             payload     => $row->{payload},
+            change_set  => $row->{change_set},
             routing_key => $row->{routing_key},
         });
     }

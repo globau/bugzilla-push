@@ -84,7 +84,7 @@ sub _object_created {
     return unless _should_push($object);
     return unless is_public($object);
 
-    $self->_push_object('create', $object, { timestamp => $args->{'timestamp'} });
+    $self->_push_object('create', $object, change_set_id(), { timestamp => $args->{'timestamp'} });
 }
 
 sub _object_modified {
@@ -96,26 +96,42 @@ sub _object_modified {
     my $object = _get_object_from_args($args);
     return unless $object;
     return unless _should_push($object);
-    my $is_public = is_public($object);
 
-    if (!$is_public) {
-        # when a bug is changed from public to private, push a fake update with just
-        # the group changes, so connectors can remove now-private bugs if required
+    my $change_set = change_set_id();
+
+    # detect when a bug changes from public to private (or back), so connectors
+    # can remove now-private bugs if required.
+    if ($object->isa('Bugzilla::Bug')) {
         # we can't use user->can_see_bug(old_bug) as that works on IDs, and the
         # bug has already been updated, so for now assume that a bug without
         # groups is public.
-        if ($object->isa('Bugzilla::Bug') && !@{$args->{'old_bug'}->groups_in}) {
-            # note the group changes only
-            $changes = {
-                'bug_group' => $changes->{'bug_group'}
+        my $old_bug = $args->{'old_bug'};
+        my $is_public = is_public($object);
+        my $was_public = !@{$old_bug->groups_in};
+
+        if (!$is_public && $was_public) {
+            # bug is changing from public to private
+            # push a fake update with the just is_private change
+            my $change = {
+                field     => 'is_private',
+                removed   => '0',
+                added     => '1',
+                timestamp => $args->{'timestamp'},
             };
-            # return the original bug object, so we don't leak any security
-            # sensitive information.  due to how $user->can_see_bug_works,
-            # is_public() on the old_bug will still return true
-            $object = $args->{'old_bug'};
-        } else {
-            # never push non-public objects
-            return;
+            # note we're sending the old bug object so we don't leak any
+            # security sensitive information.
+            $self->_push_object('modify', $old_bug, $change_set, $change);
+        } elsif ($is_public && !$was_public) {
+            # bug is changing from private to public
+            # push a fake update with the just is_private change
+            my $change = {
+                field     => 'is_private',
+                removed   => '1',
+                added     => '0',
+                timestamp => $args->{'timestamp'},
+            };
+            # it's ok to send the new bug state here
+            $self->_push_object('modify', $object, $change_set, $change);
         }
     }
 
@@ -127,7 +143,7 @@ sub _object_modified {
     # TODO split group changes?
 
     # send an individual message for each change
-    foreach my $field_name (keys %$changes) {
+    foreach my $field_name (sort keys %$changes) {
         my $change = {
             field     => $field_name,
             removed   => $changes->{$field_name}[0],
@@ -135,7 +151,7 @@ sub _object_modified {
             timestamp => $args->{'timestamp'},
         };
 
-        $self->_push_object('modify', $object, $change);
+        $self->_push_object('modify', $object, $change_set, $change);
     }
 }
 
@@ -241,7 +257,7 @@ sub _morph_flag_update {
 #
 
 sub _push_object {
-    my ($self, $message_type, $object, $changes) = @_;
+    my ($self, $message_type, $object, $change_set, $changes) = @_;
     my $rh;
 
     # serialise the object
@@ -257,6 +273,7 @@ sub _push_object {
     return unless $rh_event;
     $rh_event->{'action'}      = $message_type;
     $rh_event->{'target'}      = $name;
+    $rh_event->{'change_set'}  = $change_set;
     $rh_event->{'routing_key'} = "$name.$message_type";
     $rh_event->{'routing_key'} .= '.' . $rh_event->{'field'} if exists $rh_event->{'field'};
     $rh->{'event'} = $rh_event;
@@ -264,6 +281,7 @@ sub _push_object {
     # insert into push table
     Bugzilla::Extension::Push::Message->create({
         payload     => $self->_to_json($rh),
+        change_set  => $change_set,
         routing_key => $rh_event->{'routing_key'},
     });
 }
@@ -405,6 +423,10 @@ sub db_schema_abstract_schema {
                 TYPE => 'LONGTEXT',
                 NOTNULL => 1,
             },
+            change_set => {
+                TYPE => 'VARCHAR(32)',
+                NOTNULL => 1,
+            },
             routing_key => {
                 TYPE => 'VARCHAR(64)',
                 NOTNULL => 1,
@@ -428,6 +450,10 @@ sub db_schema_abstract_schema {
             },
             payload => {
                 TYPE => 'LONGTEXT',
+                NOTNULL => 1,
+            },
+            change_set => {
+                TYPE => 'VARCHAR(32)',
                 NOTNULL => 1,
             },
             routing_key => {
@@ -518,6 +544,10 @@ sub db_schema_abstract_schema {
             },
             message_id => {
                 TYPE => 'INT3',
+                NOTNULL => 1,
+            },
+            change_set => {
+                TYPE => 'VARCHAR(32)',
                 NOTNULL => 1,
             },
             routing_key => {

@@ -31,7 +31,7 @@ use constant UPDATE_COLUMNS => qw(
     option_value
 );
 use constant VALIDATORS => {
-    connector    => \&_check_connector,
+    connector => \&_check_connector,
 };
 use constant LIST_ORDER => 'connector';
 

@@ -45,6 +45,7 @@ sub result {
 
     Bugzilla::Extension::Push::LogEntry->create({
         message_id   => $message->message_id,
+        change_set   => $message->change_set,
         routing_key  => $message->routing_key,
         connector    => $connector->name,
         push_ts      => $message->push_ts,

@@ -26,6 +26,7 @@ use constant DB_COLUMNS => qw(
     message_id
     push_ts
     payload
+    change_set
     routing_key
     connector
     attempt_ts
@@ -40,6 +41,7 @@ use constant UPDATE_COLUMNS => qw(
 use constant LIST_ORDER => 'push_ts';
 use constant VALIDATORS => {
     payload     => \&_check_payload,
+    change_set  => \&_check_change_set,
     routing_key => \&_check_routing_key,
     connector   => \&_check_connector,
     attempts    => \&_check_attempts,
@@ -55,6 +57,7 @@ sub create_from_message {
         message_id => $message->id,
         push_ts => $message->push_ts,
         payload => $message->payload,
+        change_set => $message->change_set,
         routing_key => $message->routing_key,
         connector => $connector->name,
         attempt_ts => undef,
@@ -71,6 +74,7 @@ sub create_from_message {
 sub message_id  { return $_[0]->{'message_id'}   }
 sub push_ts     { return $_[0]->{'push_ts'};     }
 sub payload     { return $_[0]->{'payload'};     }
+sub change_set  { return $_[0]->{'change_set'};  }
 sub routing_key { return $_[0]->{'routing_key'}; }
 sub connector   { return $_[0]->{'connector'};   }
 sub attempt_ts  { return $_[0]->{'attempt_ts'};  }
@@ -104,6 +108,12 @@ sub inc_attempts {
 sub _check_payload {
     my ($invocant, $value) = @_;
     length($value) || ThrowCodeError('push_invalid_payload');
+    return $value;
+}
+
+sub _check_change_set {
+    my ($invocant, $value) = @_;
+    (defined($value) && length($value)) || ThrowCodeError('push_invalid_change_set');
     return $value;
 }
 

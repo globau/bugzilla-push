@@ -59,7 +59,7 @@ sub list {
 
     my $filter_sql = $args{filter} || '';
     my $sth = $dbh->prepare("
-        SELECT log.id, message_id, push_ts, payload, routing_key, attempt_ts, log.attempts
+        SELECT log.id, message_id, push_ts, payload, change_set, routing_key, attempt_ts, log.attempts
           FROM push_backlog log
                LEFT JOIN push_backoff off ON off.connector = log.connector
          WHERE log.connector = ? ".
@@ -74,6 +74,7 @@ sub list {
             message_id  => $row->{message_id},
             push_ts     => $row->{push_ts},
             payload     => $row->{payload},
+            change_set  => $row->{change_set},
             routing_key => $row->{routing_key},
             connector   => $self->{connector},
             attempt_ts  => $row->{attempt_ts},
