@@ -164,6 +164,9 @@ sub send {
     my $logger = Bugzilla->push_ext->logger;
     my $config = $self->config;
 
+    # don't push comments to pulse
+    return if $message->routing_key eq 'comment.create';
+
     # determine if this change causing the bug to change from private to public
 
     my $payload = decode_json($message->payload);

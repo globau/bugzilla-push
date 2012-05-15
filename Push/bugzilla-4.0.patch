@@ -1,0 +1,24 @@
+=== modified file 'Bugzilla/Bug.pm'
+--- Bugzilla/Bug.pm	2012-01-09 20:54:32 +0000
++++ Bugzilla/Bug.pm	2012-05-15 06:03:28 +0000
+@@ -697,6 +697,9 @@
+     Bugzilla::Hook::process('bug_end_of_create', { bug => $bug,
+                                                    timestamp => $timestamp,
+                                                  });
++    Bugzilla::Hook::process('bug_comment_create', { bug => $bug,
++                                                    timestamp => $timestamp,
++                                                  });
+ 
+     $dbh->bz_commit_transaction();
+ 
+@@ -984,6 +987,9 @@
+     Bugzilla::Hook::process('bug_end_of_update', 
+         { bug => $self, timestamp => $delta_ts, changes => $changes,
+           old_bug => $old_bug });
++    Bugzilla::Hook::process('bug_comment_create', { bug => $self,
++                                                    timestamp => $delta_ts,
++                                                  });
+ 
+     # If any change occurred, refresh the timestamp of the bug.
+     if (scalar(keys %$changes) || $self->{added_comments}
+

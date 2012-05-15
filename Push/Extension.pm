@@ -13,6 +13,7 @@ use warnings;
 use base qw(Bugzilla::Extension);
 
 use Bugzilla::Constants;
+use Bugzilla::Comment;
 use Bugzilla::Error;
 use Bugzilla::Extension::Push::Admin;
 use Bugzilla::Extension::Push::Connectors;
@@ -82,7 +83,6 @@ sub _object_created {
     my $object = _get_object_from_args($args);
     return unless $object;
     return unless _should_push($object);
-    return unless is_public($object);
 
     $self->_push_object('create', $object, change_set_id(), { timestamp => $args->{'timestamp'} });
 }
@@ -90,12 +90,12 @@ sub _object_created {
 sub _object_modified {
     my ($self, $args) = @_;
 
-    my $changes = $args->{'changes'} || {};
-    return unless scalar keys %$changes;
-
     my $object = _get_object_from_args($args);
     return unless $object;
     return unless _should_push($object);
+
+    my $changes = $args->{'changes'} || {};
+    return unless scalar keys %$changes;
 
     my $change_set = change_set_id();
 
@@ -161,9 +161,9 @@ sub _get_object_from_args {
 }
 
 sub _should_push {
-    my ($object) = @_;
-    my $class = blessed($object);
-    return grep { $_ eq $class } qw(Bugzilla::Bug Bugzilla::Attachment);
+    my ($object_or_class) = @_;
+    my $class = blessed($object_or_class) || $object_or_class;
+    return grep { $_ eq $class } qw(Bugzilla::Bug Bugzilla::Attachment Bugzilla::Comment);
 }
 
 # changes to bug flags are presented in a single field 'flagtypes.name' split
@@ -363,6 +363,23 @@ sub flag_end_of_update {
     return unless $self->_enabled;
     _morph_flag_updates($args);
     $self->_object_modified($args);
+}
+
+# comments in bugzilla 4.0 doesn't aren't included in the bug_end_of_* hooks,
+# this code uses custom hooks to trigger
+sub bug_comment_create {
+    my ($self, $args) = @_;
+    return unless $self->_enabled;
+
+    return unless _should_push('Bugzilla::Comment');
+    my $bug = $args->{'bug'} or return;
+    my $timestamp = $args->{'timestamp'} or return;
+
+    my $comments = Bugzilla::Comment->match({ bug_id => $bug->id, bug_when => $timestamp });
+
+    foreach my $comment (@$comments) {
+        $self->_push_object('create', $comment, change_set_id(), { timestamp => $timestamp });
+    }
 }
 
 #

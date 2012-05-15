@@ -242,6 +242,18 @@ sub _attachment {
     };
 }
 
+sub _comment {
+    my ($self, $comment) = @_;
+    return {
+        id            => _integer($comment->bug_id),
+        body          => _string($comment->body),
+        bug           => $self->_bug($comment->bug),
+        creation_time => _time($comment->creation_ts),
+        is_private    => _boolean($comment->is_private),
+        number        => _integer($comment->count),
+    };
+}
+
 sub _product {
     my ($self, $product) = @_;
     return {
