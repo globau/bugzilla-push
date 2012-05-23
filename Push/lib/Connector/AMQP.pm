@@ -165,7 +165,10 @@ sub send {
     my $config = $self->config;
 
     # don't push comments to pulse
-    return if $message->routing_key eq 'comment.create';
+    if ($message->routing_key eq 'comment.create') {
+        $logger->debug('AMQP: Ignoring comment');
+        return PUSH_RESULT_IGNORED;
+    }
 
     # determine if this change causing the bug to change from private to public
 

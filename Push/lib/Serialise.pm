@@ -182,6 +182,7 @@ sub _bug {
         platform         => _string($bug->rep_platform),
         priority         => _select($bug->priority),
         product          => $self->_product($bug->product_obj),
+        qa_contact       => $self->_user($bug->qa_contact),
         reporter         => $self->_user($bug->reporter),
         resolution       => _string($bug->resolution),
         severity         => _string($bug->bug_severity),

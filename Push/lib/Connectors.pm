@@ -59,7 +59,6 @@ sub _load {
         };
         if ($@) {
             $logger->error("Connector '$name' failed to load: " . clean_error($@));
-            $logger->debug("Connector '$name' failed to load: " . $@);
         }
     }
 }
@@ -84,7 +83,7 @@ sub reload {
     my ($self) = @_;
     $self->stop();
     $self->{objects} = {};
-    $self->start();
+    $self->_load();
 }
 
 sub names {

@@ -15,7 +15,7 @@
      Bugzilla::Hook::process('bug_end_of_update', 
          { bug => $self, timestamp => $delta_ts, changes => $changes,
            old_bug => $old_bug });
-+    Bugzilla::Hook::process('bug_comment_create', { bug => $self,
++    Bugzilla::Hook::process('bug_comment_update', { bug => $self,
 +                                                    timestamp => $delta_ts,
 +                                                  });
  

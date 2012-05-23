@@ -18,6 +18,7 @@ use Bugzilla::Extension::Push::Logger;
 use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::Option;
 use Bugzilla::Extension::Push::Queue;
+use Bugzilla::Extension::Push::Util;
 use DateTime;
 
 sub new {
@@ -71,7 +72,18 @@ sub push {
             if (!$is_backlogged) {
                 # connector isn't backlogged, immediate send
                 $logger->debug("immediate send");
-                my($result, $error) = $connector->send($message);
+                my ($result, $error);
+                eval {
+                    ($result, $error) = $connector->send($message);
+                };
+                if ($@) {
+                    $result = PUSH_RESULT_TRANSIENT;
+                    $error = clean_error($@);
+                }
+                if (!$result) {
+                    $logger->error($connector->name . " failed to return a result code");
+                    $result = PUSH_RESULT_UNKNOWN;
+                }
                 $logger->result($connector, $message, $result, $error);
 
                 if ($result == PUSH_RESULT_TRANSIENT) {
@@ -98,8 +110,19 @@ sub push {
 
         $logger->debug("processing backlog for " . $connector->name);
         while ($message) {
-            my($result, $error) = $connector->send($message);
+            my ($result, $error);
+            eval {
+                ($result, $error) = $connector->send($message);
+            };
+            if ($@) {
+                $result = PUSH_RESULT_TRANSIENT;
+                $error = $@;
+            }
             $message->inc_attempts($error);
+            if (!$result) {
+                $logger->error($connector->name . " failed to return a result code");
+                $result = PUSH_RESULT_UNKNOWN;
+            }
             $logger->result($connector, $message, $result, $error);
 
             if ($result == PUSH_RESULT_TRANSIENT) {
@@ -110,7 +133,7 @@ sub push {
 
             # message was processed
             $message->remove_from_db();
-            
+
             $message = $connector->backlog->oldest();
         }
     }

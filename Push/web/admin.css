@@ -16,6 +16,10 @@
     vertical-align: middle !important;
 }
 
+.option .help {
+    font-style: italic;
+}
+
 .hidden {
     display: none;
 }

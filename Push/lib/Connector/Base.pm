@@ -35,6 +35,7 @@ sub init {
     # abstract
     # perform any initialisation here
     # will be run when created by the web pages or by the daemon
+    # and also when the configuration needs to be reloaded
 }
 
 sub stop {

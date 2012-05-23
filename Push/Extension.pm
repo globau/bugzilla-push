@@ -371,6 +371,9 @@ sub bug_comment_create {
     my ($self, $args) = @_;
     return unless $self->_enabled;
 
+    # XXX this is being called twice when a bug is created
+    # XXX perhaps the comment should be inserted into the bug_end_of_create payload
+
     return unless _should_push('Bugzilla::Comment');
     my $bug = $args->{'bug'} or return;
     my $timestamp = $args->{'timestamp'} or return;
@@ -378,7 +381,26 @@ sub bug_comment_create {
     my $comments = Bugzilla::Comment->match({ bug_id => $bug->id, bug_when => $timestamp });
 
     foreach my $comment (@$comments) {
-        $self->_push_object('create', $comment, change_set_id(), { timestamp => $timestamp });
+        if ($comment->body ne '') {
+            $self->_push_object('create', $comment, change_set_id(), { timestamp => $timestamp });
+        }
+    }
+}
+
+sub bug_comment_update {
+    my ($self, $args) = @_;
+    return unless $self->_enabled;
+
+    return unless _should_push('Bugzilla::Comment');
+    my $bug = $args->{'bug'} or return;
+    my $timestamp = $args->{'timestamp'} or return;
+
+    my $comments = Bugzilla::Comment->match({ bug_id => $bug->id, bug_when => $timestamp });
+
+    foreach my $comment (@$comments) {
+        if ($comment->body ne '') {
+            $self->_push_object('create', $comment, change_set_id(), { timestamp => $timestamp });
+        }
     }
 }
 

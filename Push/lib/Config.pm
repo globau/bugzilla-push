@@ -10,6 +10,8 @@ package Bugzilla::Extension::Push::Config;
 use strict;
 use warnings;
 
+use Bugzilla;
+use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Option;
 
 sub new {
@@ -23,6 +25,7 @@ sub new {
     unshift @{$self->{_options}}, {
         name     => 'enabled',
         label    => 'Status',
+        help     => '',
         type     => 'select',
         values   => [ 'Enabled', 'Disabled' ],
         default  => 'Disabled',
@@ -54,8 +57,10 @@ sub load {
         $config->{$option->name} = $option->value;
     }
 
-    # validate
-    $self->_validate_config($config);
+    # validate when running from the daemon
+    if (Bugzilla->error_mode == ERROR_MODE_DIE) {
+        $self->_validate_config($config);
+    }
 
     # done, update self
     foreach my $name (keys %$config) {
@@ -131,11 +136,12 @@ sub _validate_mandatory {
         next unless $option->{required};
         my $name = $option->{name};
         if (!exists $config->{$name} || !defined($config->{$name}) || $config->{$name} eq '') {
-            push @missing, $name;
+            push @missing, $option;
         }
     }
     if (@missing) {
         my $connector = $self->{_name};
+        @missing = map { $_->{label} } @missing;
         if (scalar @missing == 1) {
             die "The option '$missing[0]' for the connector '$connector' is mandatory\n";
         } else {
