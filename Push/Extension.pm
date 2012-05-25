@@ -371,7 +371,6 @@ sub bug_comment_create {
     my ($self, $args) = @_;
     return unless $self->_enabled;
 
-    # XXX this is being called twice when a bug is created
     # XXX perhaps the comment should be inserted into the bug_end_of_create payload
 
     return unless _should_push('Bugzilla::Comment');
@@ -397,8 +396,10 @@ sub bug_comment_update {
 
     my $comments = Bugzilla::Comment->match({ bug_id => $bug->id, bug_when => $timestamp });
 
+    # when a bug is created, an update is also triggered; we don't want to sent
+    # update messages for the initial comment, or for empty comments
     foreach my $comment (@$comments) {
-        if ($comment->body ne '') {
+        if ($comment->body ne '' && $comment->count) {
             $self->_push_object('create', $comment, change_set_id(), { timestamp => $timestamp });
         }
     }
