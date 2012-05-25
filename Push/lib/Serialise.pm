@@ -17,7 +17,13 @@ use Bugzilla::Version;
 use Scalar::Util 'blessed';
 use JSON;
 
-sub new {
+my $_instance;
+sub instance {
+    $_instance ||= Bugzilla::Extension::Push::Serialise->_new();
+    return $_instance;
+}
+
+sub _new {
     my ($class) = @_;
     my $self = {};
     bless($self, $class);
@@ -26,23 +32,23 @@ sub new {
 
 # given an object, serliase to a hash
 sub object_to_hash {
-    my ($self, $object) = @_;
+    my ($self, $object, $is_shallow) = @_;
 
-    my $handler = lc(blessed($object));
-    $handler =~ s/::/_/g;
-    $handler =~ s/^bugzilla//;
-    return unless $self->can($handler);
-    (my $name = $handler) =~ s/^_//;
+    my $method = lc(blessed($object));
+    $method =~ s/::/_/g;
+    $method =~ s/^bugzilla//;
+    return unless $self->can($method);
+    (my $name = $method) =~ s/^_//;
 
     # check for a cached hash
     my $cache = Bugzilla->request_cache;
-    my $cache_id = "push.$object";
+    my $cache_id = "push." . ($is_shallow ? 'shallow.' : 'deep.') . $object;
     if (exists($cache->{$cache_id})) {
         return wantarray ? ($cache->{$cache_id}, $name) : $cache->{$cache_id};
     }
 
     # call the right method to serialise to a hash
-    my $rh = $self->$handler($object);
+    my $rh = $self->$method($object, $is_shallow);
 
     # store in cache
     if ($cache_id) {
@@ -228,10 +234,9 @@ sub _component {
 }
 
 sub _attachment {
-    my ($self, $attachment) = @_;
-    return {
+    my ($self, $attachment, $is_shallow) = @_;
+    my $rh = {
         id               => _integer($attachment->id),
-        bug              => $self->_bug($attachment->bug),
         content_type     => _string($attachment->contenttype),
         creation_time    => _time($attachment->attached),
         description      => _string($attachment->description),
@@ -242,18 +247,25 @@ sub _attachment {
         is_private       => _boolean(!is_public($attachment)),
         last_change_time => _time($attachment->modification_time),
     };
+    if (!$is_shallow) {
+        $rh->{bug} = $self->_bug($attachment->bug);
+    }
+    return $rh;
 }
 
 sub _comment {
-    my ($self, $comment) = @_;
-    return {
+    my ($self, $comment, $is_shallow) = @_;
+    my $rh = {
         id            => _integer($comment->bug_id),
         body          => _string($comment->body),
-        bug           => $self->_bug($comment->bug),
         creation_time => _time($comment->creation_ts),
         is_private    => _boolean($comment->is_private),
         number        => _integer($comment->count),
     };
+    if (!$is_shallow) {
+        $rh->{bug} = $self->_bug($comment->bug);
+    }
+    return $rh;
 }
 
 sub _product {

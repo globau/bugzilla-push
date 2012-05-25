@@ -15,13 +15,16 @@ use base 'Bugzilla::Extension::Push::Connector::Base';
 use Bugzilla::Bug;
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Constants;
+use Bugzilla::Extension::Push::Serialise;
 use Bugzilla::Extension::Push::Util;
 use Bugzilla::Field;
 use Bugzilla::Mailer;
 use Bugzilla::User;
+use Bugzilla::Util qw(trim);
 use Email::MIME;
 use FileHandle;
 use JSON;
+use Net::LDAP;
 use SOAP::Lite;
 
 sub options {
@@ -72,6 +75,20 @@ sub options {
             required => 1,
         },
         {
+            name     => 'ldap_poll',
+            label    => 'Mozilla LDAP Poll Frequency',
+            type     => 'string',
+            default  => '3',
+            required => 1,
+            help     => 'minutes',
+            validate => sub {
+                $_[0] =~ /\D/
+                    && die "LDAP Poll Frequency must be an integer\n";
+                $_[0]  == 0
+                    && die "LDAP Poll Frequency cannot be less than one minute\n";
+            },
+        },
+        {
             name     => 'service_now_url',
             label    => 'Service Now SOAP URL',
             type     => 'string',
@@ -111,19 +128,25 @@ sub should_send {
     my ($self, $message) = @_;
 
     my $data = $message->payload_decoded;
-    my $bug_id = $self->_get_bug_id($data)
+    my $bug_data = $self->_get_bug_data($data)
         || return 0;
+
+    # we don't want to send the initial comment in a separate message
+    # because we fold it into the inital message
+    if ($message->routing_key eq 'comment.create' && $data->{comment}->{number} == 0) {
+        return 0;
+    }
 
     # ensure the service-now user can see the bug
     $self->{bugzilla_user} ||= Bugzilla::User->new({ name => $self->config->{bugzilla_user} });
     if (!$self->{bugzilla_user} || !$self->{bugzilla_user}->is_enabled) {
         return 0;
     }
-    $self->{bugzilla_user}->can_see_bug($bug_id)
+    $self->{bugzilla_user}->can_see_bug($bug_data->{id})
         || return 0;
 
     # filter based on the custom field (non-emtpy = send)
-    my $bug = Bugzilla::Bug->new($bug_id);
+    my $bug = Bugzilla::Bug->new($bug_data->{id});
     return $bug->{$self->config->{bugzilla_cf}} ne '';
 }
 
@@ -143,8 +166,16 @@ sub send {
 
     # load the bug
     my $data = $message->payload_decoded;
-    my $bug_id = $self->_get_bug_id($data);
-    my $bug = Bugzilla::Bug->new($bug_id);
+    my $bug_data = $self->_get_bug_data($data);
+    my $bug = Bugzilla::Bug->new($bug_data->{id});
+
+    # inject the comment into the data for new bugs
+    if ($message->routing_key eq 'bug.create') {
+        my $comment = shift @{ $bug->comments };
+        if ($comment->body ne '') {
+            $bug_data->{comment} = Bugzilla::Extension::Push::Serialise->instance->object_to_hash($comment, 1);
+        }
+    }
 
     # map bmo login to ldap login and insert into json payload
     $self->_add_ldap_logins($data, {});
@@ -175,13 +206,13 @@ sub send {
     return PUSH_RESULT_OK;
 }
 
-sub _get_bug_id {
+sub _get_bug_data {
     my ($self, $data) = @_;
     my $target = $data->{event}->{target};
     if ($target eq 'bug') {
-        return $data->{bug}->{id};
+        return $data->{bug};
     } elsif (exists $data->{$target}->{bug}) {
-        return $data->{$target}->{bug}->{id};
+        return $data->{$target}->{bug};
     } else {
         return;
     }
@@ -217,6 +248,7 @@ sub _add_ldap_logins {
     if (exists $rh->{login}) {
         my $login = $rh->{login};
         $cache->{$login} ||= $self->_bmo_to_ldap($login);
+        Bugzilla->push_ext->logger->debug("BMO($login) --> LDAP(" . $cache->{$login} . ")");
         $rh->{ldap} = $cache->{$login};
     }
     foreach my $key (keys %$rh) {
@@ -226,9 +258,81 @@ sub _add_ldap_logins {
 }
 
 sub _bmo_to_ldap {
-    my ($login) = @_;
-    # XXX map login to ldap login
-    return '?';
+    my ($self, $login) = @_;
+    my $ldap = $self->_ldap_cache();
+
+    return '' unless $login =~ /\@mozilla\.(?:com|org)$/;
+
+    foreach my $check ($login, canon_email($login)) {
+        # check for matching bugmail entry
+        foreach my $mail (keys %$ldap) {
+            next unless $ldap->{$mail}{bugmail_canon} eq $check;
+            return $mail;
+        }
+
+        # check for matching mail
+        if (exists $ldap->{$check}) {
+            return $check;
+        }
+
+        # check for matching email alias
+        foreach my $mail (sort keys %$ldap) {
+            next unless grep { $check eq $_ } @{$ldap->{$mail}{aliases}};
+            return $mail;
+        }
+    }
+
+    return '';
+}
+
+sub _ldap_cache {
+    my ($self) = @_;
+    my $logger = Bugzilla->push_ext->logger;
+    my $config = $self->config;
+
+    # cache of all ldap entries; updated infrequently
+    if (!$self->{ldap_cache_time} || (time) - $self->{ldap_cache_time} > $config->{ldap_poll} * 60) {
+        $logger->debug('refreshing LDAP cache');
+
+        my $cache = {};
+
+        my $ldap = Net::LDAP->new($config->{ldap_host}, scheme => 'ldaps', onerror => 'die')
+            or die "$@";
+        $ldap->bind('mail=' . $config->{ldap_user} . ',o=com,dc=mozilla', password => $config->{ldap_pass});
+        my $result = $ldap->search(
+            base => 'o=com,dc=mozilla',
+            scope => 'sub',
+            filter => '(mail=*)',
+            attrs => ['mail', 'bugzillaEmail', 'emailAlias', 'cn', 'employeeType'],
+        );
+        foreach my $entry ($result->entries) {
+            my ($name, $bugMail, $mail, $type) =
+                map { $entry->get_value($_) || '' }
+                qw(cn bugzillaEmail mail employeeType);
+            next if $type eq 'DISABLED';
+            $mail = lc $mail;
+            $bugMail = '' if $bugMail !~ /\@/;
+            $bugMail = trim($bugMail);
+            if ($bugMail =~ / /) {
+                $bugMail = (grep { /\@/ } split / /, $bugMail)[0];
+            }
+            $name =~ s/\s+/ /g;
+            $cache->{$mail}{name} = trim($name);
+            $cache->{$mail}{bugmail} = $bugMail;
+            $cache->{$mail}{bugmail_canon} = canon_email($bugMail);
+            $cache->{$mail}{aliases} = [];
+            foreach my $alias (
+                @{$entry->get_value('emailAlias', asref => 1) || []}
+            ) {
+                push @{$cache->{$mail}{aliases}}, canon_email($alias);
+            }
+        }
+
+        $self->{ldap_cache}      = $cache;
+        $self->{ldap_cache_time} = (time);
+    }
+
+    return $self->{ldap_cache};
 }
 
 sub SOAP::Transport::HTTP::Client::get_basic_credentials {

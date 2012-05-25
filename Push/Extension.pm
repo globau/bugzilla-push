@@ -272,7 +272,7 @@ sub _push_object {
     my $rh;
 
     # serialise the object
-    my ($rh_object, $name) = _serialiser()->object_to_hash($object);
+    my ($rh_object, $name) = Bugzilla::Extension::Push::Serialise->instance->object_to_hash($object);
 
     if (!$rh_object) {
         warn "empty hash from serialiser ($message_type $object)\n";
@@ -281,7 +281,7 @@ sub _push_object {
     $rh->{$name} = $rh_object;
 
     # add in the events hash
-    my $rh_event = _serialiser()->changes_to_event($changes);
+    my $rh_event = Bugzilla::Extension::Push::Serialise->instance->changes_to_event($changes);
     return unless $rh_event;
     $rh_event->{'action'}      = $message_type;
     $rh_event->{'target'}      = $name;
@@ -316,15 +316,6 @@ sub _push_object {
 #
 # helpers
 #
-
-sub _serialiser {
-    my ($self) = @_;
-    my $cache = Bugzilla->request_cache->{'push'};
-    if (!exists $cache->{'seriliaser'}) {
-        $cache->{'serialiser'} = Bugzilla::Extension::Push::Serialise->new();
-    }
-    return $cache->{'serialiser'};
-}
 
 sub _to_json {
     my ($self, $rh) = @_;

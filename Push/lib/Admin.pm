@@ -14,7 +14,7 @@ use Bugzilla;
 use Bugzilla::Error;
 use Bugzilla::Extension::Push::Util;
 use Bugzilla::Util qw(trim detaint_natural);
-use JSON qw(-convert_blessed_universally);
+use JSON;
 
 use base qw(Exporter);
 our @EXPORT = qw(

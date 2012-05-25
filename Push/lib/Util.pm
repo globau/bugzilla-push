@@ -11,21 +11,23 @@ use strict;
 use warnings;
 
 use Bugzilla::Constants;
-use Bugzilla::Util 'datetime_from';
+use Bugzilla::Util qw(datetime_from trim);
 use Data::Dumper;
-use Scalar::Util 'blessed';
+use JSON;
+use Scalar::Util qw(blessed);
 use Time::HiRes;
 
 use base qw(Exporter);
 our @EXPORT = qw(
     datetime_to_timestamp
-    debug_dump
+    debug_dump debug_json
     get_first_value   
     hash_undef_to_empty
     is_public
     mapr
     clean_error
     change_set_id
+    canon_email
 );
 
 # returns true if the specified object is public
@@ -92,13 +94,21 @@ sub hash_undef_to_empty {
     }
 }
 
-# debugging method
+# debugging methods
 sub debug_dump {
     my ($object) = @_;
     local $Data::Dumper::Sortkeys = 1;
     my $output = Dumper($object);
     $output =~ s/</&lt;/g;
     print "<pre>$output</pre>";
+}
+
+sub debug_json {
+    my ($data) = @_;
+    my $json = JSON->new();
+    $json->shrink(0);
+    $json->canonical(1);
+    return $json->pretty->encode($json->decode($data));
 }
 
 # removes stacktrace and "at /some/path ..." from errors
@@ -116,5 +126,25 @@ sub clean_error {
 sub change_set_id {
     return "$$." . Time::HiRes::time();
 }
+
+# remove guff from email addresses
+sub clean_email {
+    my $email = shift;
+    $email = trim($email);
+    $email = $1 if $email =~ /^(\S+)/;
+    $email =~ s/&#64;/@/;
+    $email = lc $email;
+    return $email;
+}
+
+# resolve to canonised email form
+# eg. glob+bmo@mozilla.com --> glob@mozilla.com
+sub canon_email {
+    my $email = shift;
+    $email = clean_email($email);
+    $email =~ s/^([^\+]+)\+[^\@]+(\@.+)$/$1$2/;
+    return $email;
+}
+
 
 1;

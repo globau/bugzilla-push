@@ -14,8 +14,8 @@ use base 'Bugzilla::Object';
 
 use Bugzilla;
 use Bugzilla::Error;
-use JSON;
 use Encode;
+use JSON;
 
 #
 # initialisation

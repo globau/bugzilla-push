@@ -15,6 +15,8 @@ use base 'Bugzilla::Object';
 use Bugzilla;
 use Bugzilla::Error;
 use Bugzilla::Util;
+use Encode;
+use JSON;
 
 #
 # initialisation
@@ -80,6 +82,15 @@ sub connector   { return $_[0]->{'connector'};   }
 sub attempt_ts  { return $_[0]->{'attempt_ts'};  }
 sub attempts    { return $_[0]->{'attempts'};    }
 sub last_error  { return $_[0]->{'last_error'};  }
+
+sub payload_decoded {
+    my ($self) = @_;
+    my $payload = $self->{'payload'};
+    if (utf8::is_utf8($payload)) {
+        $payload = encode('utf8', $payload);
+    }
+    return decode_json($payload);
+}
 
 sub attempt_time {
     my ($self) = @_;
