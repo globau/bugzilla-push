@@ -42,6 +42,11 @@ sub options {
     );
 }
 
+sub should_send {
+    my ($self, $message) = @_;
+    return 1;
+}
+
 sub send {
     my ($self, $message) = @_;
     my $json = $self->{json};

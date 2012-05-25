@@ -56,11 +56,11 @@ sub object_to_hash {
 sub changes_to_event {
     my ($self, $changes) = @_;
 
-    my $event = { changes => [] };
+    my $event = {};
 
     # create common (created and modified) fields
     $event->{'user'} = $self->object_to_hash(Bugzilla->user);
-    my $timestamp = 
+    my $timestamp =
         $changes->{'timestamp'}
         || Bugzilla->dbh->selectrow_array('SELECT LOCALTIMESTAMP(0)');
     $event->{'time'} = datetime_to_timestamp($timestamp);
@@ -87,6 +87,7 @@ sub changes_to_event {
                 $change->{'removed'} = _custom_field($field, $change->{'removed'});
             }
 
+            $event->{'changes'} = [] unless exists $event->{'changes'};
             push @{$event->{'changes'}}, $change;
         }
     }

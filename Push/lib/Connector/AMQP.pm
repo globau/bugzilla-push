@@ -17,7 +17,6 @@ use Bugzilla::Extension::Push::Constants;
 use Bugzilla::Extension::Push::Util;
 use Bugzilla::Util qw(generate_random_password);
 use DateTime;
-use JSON;
 use Net::RabbitMQ;
 
 sub init {
@@ -159,32 +158,43 @@ sub _bind {
 
 }
 
+sub should_send {
+    my ($self, $message) = @_;
+    my $logger = Bugzilla->push_ext->logger;
+
+    my $payload = $message->payload_decoded();
+    my $target = $payload->{event}->{target};
+    my $is_private = $payload->{$target}->{is_private} ? 1 : 0;
+    if (!$is_private && exists $payload->{$target}->{bug}) {
+        $is_private = $payload->{$target}->{bug}->{is_private} ? 1 : 0;
+    }
+
+    if ($is_private) {
+        # we only want to push the is_private message from the change_set, as
+        # this is guaranteed to contain public information only
+        if ($message->routing_key !~ /\.modify:is_private$/) {
+            $logger->debug('AMQP: Ignoring private message');
+            return 0;
+        }
+        $logger->debug('AMQP: Sending change of message to is_private');
+    }
+    return 1;
+}
+
 sub send {
     my ($self, $message) = @_;
     my $logger = Bugzilla->push_ext->logger;
     my $config = $self->config;
 
     # don't push comments to pulse
-    if ($message->routing_key eq 'comment.create') {
+    if ($message->routing_key =~ /^comment\./) {
         $logger->debug('AMQP: Ignoring comment');
         return PUSH_RESULT_IGNORED;
     }
 
-    # determine if this change causing the bug to change from private to public
-
-    my $payload = decode_json($message->payload);
-    my $target = $payload->{event}->{target};
-    my $is_private = $payload->{$target}->{is_private} ? 1 : 0;
-
-    if ($is_private) {
-        # we only want to push the is_private message from the change_set, as
-        # this is guaranteed to contain public information only
-        if ($message->routing_key !~ /\.modify\.is_private$/) {
-            $logger->debug('AMQP: Ignoring private message');
-            return PUSH_RESULT_IGNORED;
-        }
-        $logger->debug('AMQP: Sending change of message to is_private');
-    }
+    # don't push private data
+    $self->should_push($message)
+        || return PUSH_RESULT_IGNORED;
 
     $self->_bind($message);
 

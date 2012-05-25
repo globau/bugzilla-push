@@ -14,6 +14,8 @@ use base 'Bugzilla::Object';
 
 use Bugzilla;
 use Bugzilla::Error;
+use JSON;
+use Encode;
 
 #
 # initialisation
@@ -35,6 +37,21 @@ use constant VALIDATORS => {
     routing_key => \&_check_routing_key,
 };
 
+# this creates an object which doesn't exist on the database
+sub new_transient {
+    my $invocant = shift;
+    my $class    = ref($invocant) || $invocant;
+    my $object   = shift;
+    bless($object, $class) if $object;
+    return $object;
+}
+
+# take a transient object and commit
+sub create_from_transient {
+    my ($self) = @_;
+    return $self->create($self);
+}
+
 #
 # accessors
 #
@@ -44,6 +61,15 @@ sub payload     { return $_[0]->{'payload'};     }
 sub change_set  { return $_[0]->{'change_set'};  }
 sub routing_key { return $_[0]->{'routing_key'}; }
 sub message_id  { return $_[0]->id;              }
+
+sub payload_decoded {
+    my ($self) = @_;
+    my $payload = $self->{'payload'};
+    if (utf8::is_utf8($payload)) {
+        $payload = encode('utf8', $payload);
+    }
+    return decode_json($payload);
+}
 
 #
 # validators

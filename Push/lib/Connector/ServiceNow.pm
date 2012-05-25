@@ -19,7 +19,6 @@ use Bugzilla::Extension::Push::Util;
 use Bugzilla::Field;
 use Bugzilla::Mailer;
 use Bugzilla::User;
-use Encode;
 use Email::MIME;
 use FileHandle;
 use JSON;
@@ -108,39 +107,44 @@ sub init {
     $_instance = $self;
 }
 
+sub should_send {
+    my ($self, $message) = @_;
+
+    my $data = $message->payload_decoded;
+    my $bug_id = $self->_get_bug_id($data)
+        || return 0;
+
+    # ensure the service-now user can see the bug
+    $self->{bugzilla_user} ||= Bugzilla::User->new({ name => $self->config->{bugzilla_user} });
+    if (!$self->{bugzilla_user} || !$self->{bugzilla_user}->is_enabled) {
+        return 0;
+    }
+    $self->{bugzilla_user}->can_see_bug($bug_id)
+        || return 0;
+
+    # filter based on the custom field (non-emtpy = send)
+    my $bug = Bugzilla::Bug->new($bug_id);
+    return $bug->{$self->config->{bugzilla_cf}} ne '';
+}
+
 sub send {
     my ($self, $message) = @_;
     my $logger = Bugzilla->push_ext->logger;
     my $config = $self->config;
 
-    # load payload
-    my $payload = $message->payload;
-    if (utf8::is_utf8($payload)) {
-        $payload = encode('utf8', $payload);
-    }
-    my $data = decode_json($payload);
+    # ignore filtered messages
+    $self->should_send($message)
+        || return PUSH_RESULT_IGNORED;
 
-    # grab the bug object
-    my $target = $data->{event}->{target};
-    my $bug_id;
-    if ($target eq 'bug') {
-        $bug_id = $data->{bug}->{id};
-    } elsif (exists $data->{$target}->{bug}) {
-        $bug_id = $data->{$target}->{bug}->{id};
-    } else {
-        return PUSH_RESULT_IGNORED;
-    }
-
-    # ensure the service-now user can see the bug
-    $self->{bugzilla_user} ||= Bugzilla::User->new({ name => $self->config->{bugzilla_user} });
+    # should_send intiailises bugzilla_user; make sure we return a useful error message
     if (!$self->{bugzilla_user}) {
         return (PUSH_RESULT_TRANSIENT, "Invalid bugzilla-user (" . $self->config->{bugzilla_user} . ")");
     }
-    return unless $self->{bugzilla_user}->can_see_bug($bug_id);
 
-    # filter based on the custom field (non-emtpy = send)
+    # load the bug
+    my $data = $message->payload_decoded;
+    my $bug_id = $self->_get_bug_id($data);
     my $bug = Bugzilla::Bug->new($bug_id);
-    return PUSH_RESULT_IGNORED unless $bug->{$self->config->{bugzilla_cf}} ne '';
 
     # map bmo login to ldap login and insert into json payload
     $self->_add_ldap_logins($data, {});
@@ -169,6 +173,18 @@ sub send {
     }
 
     return PUSH_RESULT_OK;
+}
+
+sub _get_bug_id {
+    my ($self, $data) = @_;
+    my $target = $data->{event}->{target};
+    if ($target eq 'bug') {
+        return $data->{bug}->{id};
+    } elsif (exists $data->{$target}->{bug}) {
+        return $data->{$target}->{bug}->{id};
+    } else {
+        return;
+    }
 }
 
 sub _build_mail {

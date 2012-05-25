@@ -287,14 +287,30 @@ sub _push_object {
     $rh_event->{'target'}      = $name;
     $rh_event->{'change_set'}  = $change_set;
     $rh_event->{'routing_key'} = "$name.$message_type";
+    if (exists $rh_event->{'changes'}) {
+        $rh_event->{'routing_key'} .= ':' . join(',', map { $_->{'field'} } @{$rh_event->{'changes'}});
+    }
     $rh->{'event'} = $rh_event;
 
-    # insert into push table
-    Bugzilla::Extension::Push::Message->create({
+    # create message object
+    my $message = Bugzilla::Extension::Push::Message->new_transient({
         payload     => $self->_to_json($rh),
         change_set  => $change_set,
         routing_key => $rh_event->{'routing_key'},
     });
+
+    # don't hit the database unless there are interested connectors
+    my $should_push = 0;
+    foreach my $connector (Bugzilla->push_ext->connectors->list) {
+        next unless $connector->enabled;
+        next unless $connector->should_send($message);
+        $should_push = 1;
+        last;
+    }
+    return unless $should_push;
+
+    # insert into push table
+    $message->create_from_transient();
 }
 
 #

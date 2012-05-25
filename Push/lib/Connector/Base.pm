@@ -44,6 +44,16 @@ sub stop {
     # run from the daemon only; disconnect from remote hosts, etc
 }
 
+sub should_send {
+    my ($self, $message) = @_;
+    # abstract
+    # return boolean indicating if the connector will be sending the message.
+    # this will be called twice for each message, and should be a very quick
+    # simple test.  the connector can perform a more exhaustive test in the
+    # send() method.
+    return 0;
+}
+
 sub send {
     my ($self, $message) = @_;
     # abstract
