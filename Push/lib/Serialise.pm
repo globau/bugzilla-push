@@ -54,40 +54,40 @@ sub object_to_hash {
 
 # given a changes hash, return an event hash
 sub changes_to_event {
-    my ($self, $change) = @_;
+    my ($self, $changes) = @_;
 
-    my $event = {};
+    my $event = { changes => [] };
 
     # create common (created and modified) fields
     $event->{'user'} = $self->object_to_hash(Bugzilla->user);
     my $timestamp = 
-        $change->{'timestamp'}
+        $changes->{'timestamp'}
         || Bugzilla->dbh->selectrow_array('SELECT LOCALTIMESTAMP(0)');
     $event->{'time'} = datetime_to_timestamp($timestamp);
 
-    if (exists $change->{'field'}) {
-        # map undef to emtpy
-        hash_undef_to_empty($change);
+    foreach my $change (@{$changes->{'changes'}}) {
+        if (exists $change->{'field'}) {
+            # map undef to emtpy
+            hash_undef_to_empty($change);
 
-        # custom_fields change from undef to empty, ignore these changes
-        return if ($change->{'added'} || "") eq "" &&
-                  ($change->{'removed'} || "") eq "";
+            # custom_fields change from undef to empty, ignore these changes
+            return if ($change->{'added'} || "") eq "" &&
+                    ($change->{'removed'} || "") eq "";
 
-        # use saner field serialisation
-        my $field = $change->{'field'};
-        $event->{'field'} = $field;
+            # use saner field serialisation
+            my $field = $change->{'field'};
+            $change->{'field'} = $field;
 
-        if ($field eq 'priority' || $field eq 'target_milestone') {
-            $event->{'added'} = _select($change->{'added'});
-            $event->{'removed'} = _select($change->{'removed'});
+            if ($field eq 'priority' || $field eq 'target_milestone') {
+                $change->{'added'} = _select($change->{'added'});
+                $change->{'removed'} = _select($change->{'removed'});
 
-        } elsif ($field =~ /^cf_/) {
-            $event->{'added'} = _custom_field($field, $change->{'added'});
-            $event->{'removed'} = _custom_field($field, $change->{'removed'});
+            } elsif ($field =~ /^cf_/) {
+                $change->{'added'} = _custom_field($field, $change->{'added'});
+                $change->{'removed'} = _custom_field($field, $change->{'removed'});
+            }
 
-        } else {
-            $event->{'added'} = $change->{'added'};
-            $event->{'removed'} = $change->{'removed'};
+            push @{$event->{'changes'}}, $change;
         }
     }
 

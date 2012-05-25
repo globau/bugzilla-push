@@ -112,26 +112,34 @@ sub _object_modified {
         if (!$is_public && $was_public) {
             # bug is changing from public to private
             # push a fake update with the just is_private change
-            my $change = {
-                field     => 'is_private',
-                removed   => '0',
-                added     => '1',
+            my $private_changes = {
                 timestamp => $args->{'timestamp'},
+                changes   => [
+                    {
+                        field   => 'is_private',
+                        removed => '0',
+                        added   => '1',
+                    },
+                ],
             };
             # note we're sending the old bug object so we don't leak any
             # security sensitive information.
-            $self->_push_object('modify', $old_bug, $change_set, $change);
+            $self->_push_object('modify', $old_bug, $change_set, $private_changes);
         } elsif ($is_public && !$was_public) {
             # bug is changing from private to public
             # push a fake update with the just is_private change
-            my $change = {
-                field     => 'is_private',
-                removed   => '1',
-                added     => '0',
+            my $private_changes = {
                 timestamp => $args->{'timestamp'},
+                changes   => [
+                    {
+                        field   => 'is_private',
+                        removed => '1',
+                        added   => '0',
+                    },
+                ],
             };
             # it's ok to send the new bug state here
-            $self->_push_object('modify', $object, $change_set, $change);
+            $self->_push_object('modify', $object, $change_set, $private_changes);
         }
     }
 
@@ -142,17 +150,20 @@ sub _object_modified {
 
     # TODO split group changes?
 
-    # send an individual message for each change
+    # restructure the changes hash
+    my $changes_data = {
+        timestamp => $args->{'timestamp'},
+        changes   => [],
+    };
     foreach my $field_name (sort keys %$changes) {
-        my $change = {
-            field     => $field_name,
-            removed   => $changes->{$field_name}[0],
-            added     => $changes->{$field_name}[1],
-            timestamp => $args->{'timestamp'},
+        push @{$changes_data->{'changes'}}, {
+            field   => $field_name,
+            removed => $changes->{$field_name}[0],
+            added   => $changes->{$field_name}[1],
         };
-
-        $self->_push_object('modify', $object, $change_set, $change);
     }
+
+    $self->_push_object('modify', $object, $change_set, $changes_data);
 }
 
 sub _get_object_from_args {
@@ -262,6 +273,7 @@ sub _push_object {
 
     # serialise the object
     my ($rh_object, $name) = _serialiser()->object_to_hash($object);
+
     if (!$rh_object) {
         warn "empty hash from serialiser ($message_type $object)\n";
         return;
@@ -275,7 +287,6 @@ sub _push_object {
     $rh_event->{'target'}      = $name;
     $rh_event->{'change_set'}  = $change_set;
     $rh_event->{'routing_key'} = "$name.$message_type";
-    $rh_event->{'routing_key'} .= '.' . $rh_event->{'field'} if exists $rh_event->{'field'};
     $rh->{'event'} = $rh_event;
 
     # insert into push table

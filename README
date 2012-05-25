@@ -7,12 +7,12 @@ notes to include in this document:
   - will support multiple connectors
     - initially just pulse
     - want to push bug metadata into an elastic-search cluster
-  - limited to new and modified bugs and attachments on public bugs/attachments
-  - if several things are changed at the same time, a separate message is generated for each change
-  - comments are not pushed, requires bugzilla 4.2 (will fix as part of the bmo/4.2 upgrade project)
+  - comments require two new hook for bugzilla 4.0
+  - comments are sent in a seperate message from bug meta changes
   - talk about objects vs data values
     - objects always contain 'id', and generally 'name'
     - if an object field is no set ==> undef (eg bug:milestone)
+  - currently untested on bugzilla 4.2 or higher
 
 message structure:
 
@@ -84,9 +84,13 @@ sample message:
    },
    "event" : {
       "action" : "modify",
-      "added" : "glob@mozilla.com",
-      "field" : "assigned_to",
-      "removed" : "nobody@mozilla.org",
+      "changes" : [
+        {
+            "added" : "glob@mozilla.com",
+            "field" : "assigned_to",
+            "removed" : "nobody@mozilla.org",
+        }
+      ],
       "target" : "bug",
       "time" : "2011-12-06T09:45:52",
       "user" : {
