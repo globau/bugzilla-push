@@ -48,9 +48,8 @@ sub should_send {
     my ($self, $message) = @_;
     # abstract
     # return boolean indicating if the connector will be sending the message.
-    # this will be called twice for each message, and should be a very quick
-    # simple test.  the connector can perform a more exhaustive test in the
-    # send() method.
+    # this will be called each message, and should be a very quick simple test.
+    # the connector can perform a more exhaustive test in the send() method.
     return 0;
 }
 

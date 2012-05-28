@@ -145,6 +145,10 @@ sub should_send {
     $self->{bugzilla_user}->can_see_bug($bug_data->{id})
         || return 0;
 
+    # don't push changes made by the service-now account
+    $data->{event}->{user}->{id} == $self->{bugzilla_user}->id
+        && return 0;
+
     # filter based on the custom field (non-emtpy = send)
     my $bug = Bugzilla::Bug->new($bug_data->{id});
     return $bug->{$self->config->{bugzilla_cf}} ne '';

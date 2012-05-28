@@ -21,7 +21,7 @@ use base qw(Exporter);
 our @EXPORT = qw(
     datetime_to_timestamp
     debug_dump debug_json
-    get_first_value   
+    get_first_value
     hash_undef_to_empty
     is_public
     mapr
