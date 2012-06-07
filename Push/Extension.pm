@@ -389,8 +389,6 @@ sub bug_comment_create {
     my ($self, $args) = @_;
     return unless $self->_enabled;
 
-    # XXX perhaps the comment should be inserted into the bug_end_of_create payload
-
     return unless _should_push('Bugzilla::Comment');
     my $bug = $args->{'bug'} or return;
     my $timestamp = $args->{'timestamp'} or return;
@@ -412,13 +410,20 @@ sub bug_comment_update {
     my $bug = $args->{'bug'} or return;
     my $timestamp = $args->{'timestamp'} or return;
 
-    my $comments = Bugzilla::Comment->match({ bug_id => $bug->id, bug_when => $timestamp });
+    my $comment_id = $args->{'comment_id'};
+    if ($comment_id) {
+        # XXX this should set changes.  only is_private changes will trigger this event
+        my $comment = Bugzilla::Comment->new($comment_id);
+        $self->_push_object('update', $comment, change_set_id(), { timestamp => $timestamp });
 
-    # when a bug is created, an update is also triggered; we don't want to sent
-    # update messages for the initial comment, or for empty comments
-    foreach my $comment (@$comments) {
-        if ($comment->body ne '' && $comment->count) {
-            $self->_push_object('create', $comment, change_set_id(), { timestamp => $timestamp });
+    } else {
+        # when a bug is created, an update is also triggered; we don't want to sent
+        # update messages for the initial comment, or for empty comments
+        my $comments = Bugzilla::Comment->match({ bug_id => $bug->id, bug_when => $timestamp });
+        foreach my $comment (@$comments) {
+            if ($comment->body ne '' && $comment->count) {
+                $self->_push_object('create', $comment, change_set_id(), { timestamp => $timestamp });
+            }
         }
     }
 }
@@ -628,7 +633,7 @@ sub db_schema_abstract_schema {
                 TYPE => 'INT1',
                 NOTNULL => 1,
             },
-            error => {
+            data => {
                 TYPE => 'MEDIUMTEXT',
             },
         ],

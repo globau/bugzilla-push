@@ -72,19 +72,19 @@ sub push {
             if (!$is_backlogged) {
                 # connector isn't backlogged, immediate send
                 $logger->debug("immediate send");
-                my ($result, $error);
+                my ($result, $data);
                 eval {
-                    ($result, $error) = $connector->send($message);
+                    ($result, $data) = $connector->send($message);
                 };
                 if ($@) {
                     $result = PUSH_RESULT_TRANSIENT;
-                    $error = clean_error($@);
+                    $data   = clean_error($@);
                 }
                 if (!$result) {
                     $logger->error($connector->name . " failed to return a result code");
                     $result = PUSH_RESULT_UNKNOWN;
                 }
-                $logger->result($connector, $message, $result, $error);
+                $logger->result($connector, $message, $result, $data);
 
                 if ($result == PUSH_RESULT_TRANSIENT) {
                     $is_backlogged = 1;
@@ -110,20 +110,20 @@ sub push {
 
         $logger->debug("processing backlog for " . $connector->name);
         while ($message) {
-            my ($result, $error);
+            my ($result, $data);
             eval {
-                ($result, $error) = $connector->send($message);
+                ($result, $data) = $connector->send($message);
             };
             if ($@) {
                 $result = PUSH_RESULT_TRANSIENT;
-                $error = $@;
+                $data   = $@;
             }
-            $message->inc_attempts($error);
+            $message->inc_attempts($result == PUSH_RESULT_OK ? '' : $data);
             if (!$result) {
                 $logger->error($connector->name . " failed to return a result code");
                 $result = PUSH_RESULT_UNKNOWN;
             }
-            $logger->result($connector, $message, $result, $error);
+            $logger->result($connector, $message, $result, $data);
 
             if ($result == PUSH_RESULT_TRANSIENT) {
                 # connector is still down, stop trying

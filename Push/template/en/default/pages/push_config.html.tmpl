@@ -92,6 +92,11 @@ var push_defaults = new Array();
                  value="[% config.${option.name} FILTER html %]" size="60"
                  id="[% name FILTER html %]_[% option.name FILTER html %]">
 
+        [% ELSIF option.type == 'password' %]
+          <input type="password" name="[% name FILTER html %].[% option.name FILTER html %]"
+                 value="[% config.${option.name} FILTER html %]" size="60"
+                 id="[% name FILTER html %]_[% option.name FILTER html %]">
+
         [% ELSIF option.type == 'select' %]
           <select name="[% name FILTER html %].[% option.name FILTER html %]"
                   id="[% name FILTER html %]_[% option.name FILTER html %]"

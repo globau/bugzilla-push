@@ -22,6 +22,21 @@ use constant REQUIRED_MODULES => [
         module  => 'JSON::XS',
         version => '2.0'
     },
+    {
+        package => 'Crypt-CBC',
+        module  => 'Crypt::CBC',
+        version => '0'
+    },
+    {
+        package => 'Crypt-DES',
+        module  => 'Crypt::DES',
+        version => '0'
+    },
+    {
+        package => 'Crypt-DES_EDE3',
+        module  => 'Crypt::DES_EDE3',
+        version => '0'
+    },
 ];
 
 use constant OPTIONAL_MODULES => [

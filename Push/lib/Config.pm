@@ -13,6 +13,7 @@ use warnings;
 use Bugzilla;
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Option;
+use Crypt::CBC;
 
 sub new {
     my ($class, $name, @options) = @_;
@@ -39,6 +40,14 @@ sub options {
     return @{$self->{_options}};
 }
 
+sub option {
+    my ($self, $name) = @_;
+    foreach my $option ($self->options) {
+        return $option if $option->{name} eq $name;
+    }
+    return undef;
+}
+
 sub load {
     my ($self) = @_;
     my $config = {};
@@ -54,7 +63,13 @@ sub load {
         connector => $self->{_name},
     });
     foreach my $option (@$options) {
-        $config->{$option->name} = $option->value;
+        my $option_config = $self->option($option->name)
+            || next;
+        if ($option_config->{type} eq 'password') {
+            $config->{$option->name} = $self->_decrypt($option->value);
+        } else {
+            $config->{$option->name} = $option->value;
+        }
     }
 
     # validate when running from the daemon
@@ -99,7 +114,11 @@ sub update {
     # update options
     foreach my $name (keys %options) {
         my $option = $options{$name};
-        $option->set_value($self->{$name});
+        if ($self->option($name)->{type} eq 'password') {
+            $option->set_value($self->_encrypt($self->{$name}));
+        } else {
+            $option->set_value($self->{$name});
+        }
         $option->update();
     }
 
@@ -160,11 +179,36 @@ sub _validate_config {
         my $name = $option->{name};
         next unless exists $config->{$name} && exists $option->{validate};
         eval {
-            $option->{validate}->($config->{$name});
+            $option->{validate}->($config->{$name}, $config);
         };
         push @errors, $@ if $@;
     }
     die join("\n", @errors) if @errors;
+
+    if ($self->{_name} ne 'global') {
+        my $class = 'Bugzilla::Extension::Push::Connector::' . $self->{_name};
+        $class->options_validate($config);
+    }
+}
+
+sub _cipher {
+    my ($self) = @_;
+    $self->{_cipher} ||= Crypt::CBC->new(
+        -key => Bugzilla->localconfig->{'site_wide_secret'},
+        -cipher => 'DES_EDE3');
+    return $self->{_cipher};
+}
+
+sub _decrypt {
+    my ($self, $value) = @_;
+    my $result;
+    eval { $result = $self->_cipher->decrypt_hex($value) };
+    return $@ ? '' : $result;
+}
+
+sub _encrypt {
+    my ($self, $value) = @_;
+    return $self->_cipher->encrypt_hex($value);
 }
 
 1;

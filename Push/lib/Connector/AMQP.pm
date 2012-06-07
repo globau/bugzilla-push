@@ -64,7 +64,7 @@ sub options {
         {
             name     => 'password',
             label    => 'Password',
-            type     => 'string',
+            type     => 'password',
             default  => 'guest',
             required => 1,
         },

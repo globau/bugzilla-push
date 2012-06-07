@@ -29,10 +29,10 @@ use constant DB_COLUMNS => qw(
     push_ts
     processed_ts
     result
-    error
+    data
 );
 use constant VALIDATORS => {
-    error => \&_check_error,
+    data => \&_check_data,
 };
 
 #
@@ -46,13 +46,13 @@ sub connector    { return $_[0]->{'connector'};    }
 sub push_ts      { return $_[0]->{'push_ts'};      }
 sub processed_ts { return $_[0]->{'processed_ts'}; }
 sub result       { return $_[0]->{'result'};       }
-sub error        { return $_[0]->{'error'};        }
+sub data         { return $_[0]->{'data'};         }
 
 #
 # validators
 #
 
-sub _check_error {
+sub _check_data {
     my ($invocant, $value) = @_;
     return $value eq '' ? undef : $value;
 }

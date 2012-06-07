@@ -66,6 +66,12 @@ sub options {
     return ();
 }
 
+sub options_validate {
+    my ($class, $config) = @_;
+    # abstract, static
+    # die if a combination of options in $config is invalid
+}
+
 #
 #
 #

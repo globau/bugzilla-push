@@ -24,23 +24,28 @@ sub info  { shift->_log_it('INFO', @_) }
 sub error { shift->_log_it('ERROR', @_) }
 sub debug { shift->_log_it('DEBUG', @_) }
 
+sub debugging {
+    my ($self) = @_;
+    return $self->{debug};
+}
+
 sub _log_it {
     my ($self, $method, $message) = @_;
-    return if $method eq 'DEBUG' && ! $self->{debug};
+    return if $method eq 'DEBUG' && !$self->debugging;
     chomp $message;
     print '[' . localtime(time) ."] $method: $message\n";
 }
 
 sub result {
-    my ($self, $connector, $message, $result, $error) = @_;
-    $error ||= '';
+    my ($self, $connector, $message, $result, $data) = @_;
+    $data ||= '';
 
     $self->info(sprintf(
         "%s: Message #%s: %s %s",
         $connector->name,
         $message->message_id,
         push_result_to_string($result),
-        $error
+        $data
     ));
 
     Bugzilla::Extension::Push::LogEntry->create({
@@ -51,7 +56,7 @@ sub result {
         push_ts      => $message->push_ts,
         processed_ts => Bugzilla->dbh->selectrow_array('SELECT NOW()'),
         result       => $result,
-        error        => $error,
+        data         => $data,
     });
 }
 

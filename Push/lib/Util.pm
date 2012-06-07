@@ -108,7 +108,8 @@ sub debug_json {
     my $json = JSON->new();
     $json->shrink(0);
     $json->canonical(1);
-    return $json->pretty->encode($json->decode($data));
+    $data = $json->decode($data) unless ref($data);
+    return $json->pretty->encode($data);
 }
 
 # removes stacktrace and "at /some/path ..." from errors
