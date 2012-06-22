@@ -281,8 +281,7 @@ sub send {
         return (PUSH_RESULT_ERROR, "Malformed JSON response from ServiceNow: 'records' array does not contain an object");
     }
 
-    # i'm guessing that sys_id is the unique identifier for this action
-    # might also be sys_import_set
+    # sys_id is the unique identifier for this action
     if (!exists $record->{sys_id} || $record->{sys_id} eq '') {
         return (PUSH_RESULT_ERROR, "Malformed JSON response from ServiceNow: 'records object' does not contain a valid sys_id");
     }
