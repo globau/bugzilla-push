@@ -65,6 +65,7 @@ sub push {
     while(my $message = $self->queue->oldest) {
         foreach my $connector ($connectors->list) {
             next unless $connector->enabled;
+            next unless $connector->should_send($message);
             $logger->debug("pushing to " . $connector->name);
 
             my $is_backlogged = $connector->backlog->count;

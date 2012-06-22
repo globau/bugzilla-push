@@ -1,6 +1,6 @@
 === modified file 'Bugzilla/Bug.pm'
 --- Bugzilla/Bug.pm	2012-01-09 20:54:32 +0000
-+++ Bugzilla/Bug.pm	2012-05-15 06:03:28 +0000
++++ Bugzilla/Bug.pm	2012-06-06 08:22:34 +0000
 @@ -697,6 +697,9 @@
      Bugzilla::Hook::process('bug_end_of_create', { bug => $bug,
                                                     timestamp => $timestamp,
@@ -11,14 +11,25 @@
  
      $dbh->bz_commit_transaction();
  
-@@ -984,6 +987,9 @@
-     Bugzilla::Hook::process('bug_end_of_update', 
-         { bug => $self, timestamp => $delta_ts, changes => $changes,
-           old_bug => $old_bug });
-+    Bugzilla::Hook::process('bug_comment_update', { bug => $self,
-+                                                    timestamp => $delta_ts,
-+                                                  });
+@@ -906,6 +909,9 @@
+             LogActivityEntry($self->id, "work_time", "", $comment->{work_time},
+                 Bugzilla->user->id, $delta_ts);
+         }
++        Bugzilla::Hook::process('bug_comment_update', { bug => $self,
++                                                        timestamp => $delta_ts,
++                                                    });
+     }
+    
+     # Comment Privacy 
+@@ -916,6 +922,10 @@
+             = $self->{comment_isprivate}->{$comment_id} ? (0, 1) : (1, 0);
+         LogActivityEntry($self->id, "longdescs.isprivate", $from, $to, 
+                          Bugzilla->user->id, $delta_ts, $comment_id);
++        Bugzilla::Hook::process('bug_comment_update', { bug => $self,
++                                                        comment_id => $comment_id,
++                                                        timestamp => $delta_ts,
++                                                    });
+     }
  
-     # If any change occurred, refresh the timestamp of the bug.
-     if (scalar(keys %$changes) || $self->{added_comments}
+     # Insert the values into the multiselect value tables
 

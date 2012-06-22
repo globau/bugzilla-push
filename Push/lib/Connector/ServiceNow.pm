@@ -250,8 +250,9 @@ sub send {
 
     # empty response
     if (length($result->content) == 0) {
-        # seen during development, treat as fatal
-        return (PUSH_RESULT_ERROR, "Empty response");
+        # malformed request, treat as transient to allow code to fix
+        # may also be misconfiguration on servicenow, also transient
+        return (PUSH_RESULT_TRANSIENT, "Empty response");
     }
 
     # json errors
@@ -262,11 +263,10 @@ sub send {
     if ($@) {
         return (PUSH_RESULT_TRANSIENT, clean_error($@));
     }
+    $logger->debugging && $logger->debug(debug_json($result_data));
     if (exists $result_data->{error}) {
         return (PUSH_RESULT_ERROR, $result_data->{error});
     };
-
-    $logger->debugging && $logger->debug(debug_json($result_data));
 
     # malformed/unexpected json response
     if (!exists $result_data->{records}
