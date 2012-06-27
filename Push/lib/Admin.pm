@@ -117,6 +117,10 @@ sub admin_queues {
 
 sub admin_log {
     my ($vars) = @_;
+    my $push = Bugzilla->push_ext;
+    my $input = Bugzilla->input_params;
+
+    $vars->{push} = $push;
 }
 
 1;

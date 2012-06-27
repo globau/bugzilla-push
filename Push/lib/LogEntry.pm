@@ -14,6 +14,7 @@ use base 'Bugzilla::Object';
 
 use Bugzilla;
 use Bugzilla::Error;
+use Bugzilla::Extension::Push::Constants;
 
 #
 # initialisation
@@ -34,6 +35,8 @@ use constant DB_COLUMNS => qw(
 use constant VALIDATORS => {
     data => \&_check_data,
 };
+use constant NAME_FIELD => '';
+use constant LIST_ORDER => 'processed_ts DESC';
 
 #
 # accessors
@@ -47,6 +50,8 @@ sub push_ts      { return $_[0]->{'push_ts'};      }
 sub processed_ts { return $_[0]->{'processed_ts'}; }
 sub result       { return $_[0]->{'result'};       }
 sub data         { return $_[0]->{'data'};         }
+
+sub result_string { return push_result_to_string($_[0]->result) }
 
 #
 # validators

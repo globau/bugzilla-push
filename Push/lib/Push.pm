@@ -14,6 +14,7 @@ use Bugzilla::Extension::Push::BacklogMessage;
 use Bugzilla::Extension::Push::Config;
 use Bugzilla::Extension::Push::Connectors;
 use Bugzilla::Extension::Push::Constants;
+use Bugzilla::Extension::Push::Log;
 use Bugzilla::Extension::Push::Logger;
 use Bugzilla::Extension::Push::Message;
 use Bugzilla::Extension::Push::Option;
@@ -228,6 +229,12 @@ sub queue {
     my ($self) = @_;
     $self->{queue} ||= Bugzilla::Extension::Push::Queue->new();
     return $self->{queue};
+}
+
+sub log {
+    my ($self) = @_;
+    $self->{log} ||= Bugzilla::Extension::Push::Log->new();
+    return $self->{log};
 }
 
 1;
