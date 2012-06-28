@@ -14,9 +14,9 @@ use base 'Bugzilla::Object';
 
 use Bugzilla;
 use Bugzilla::Error;
+use Bugzilla::Extension::Push::Util;
 use Bugzilla::Util;
 use Encode;
-use JSON;
 
 #
 # initialisation
@@ -85,17 +85,7 @@ sub last_error  { return $_[0]->{'last_error'};  }
 
 sub payload_decoded {
     my ($self) = @_;
-    my $payload = $self->{'payload'};
-    # kludge; sometimes the payload contains utf8 chars but isn't tagged
-    my $result;
-    eval {
-        $result = decode_json($payload);
-    };
-    if ($@) {
-        $payload = encode('utf8', $payload);
-        $result = decode_json($payload);
-    }
-    return $result;
+    return from_json($self->{'payload'});
 }
 
 sub attempt_time {
