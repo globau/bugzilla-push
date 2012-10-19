@@ -203,16 +203,16 @@ sub send {
     );
 
     $logger->debug("Uploading $local_dir/$filename.add");
-    $sftp->put("$local_dir/$filename.add", "$remote_dir/$filename.add")
-        or die "Failed to upload $local_dir/$filename.add to $remote_dir/$filename.add\n";
+    $sftp->put("$local_dir/$filename.add", "$remote_dir$filename.add")
+        or return (PUSH_RESULT_ERROR, "Failed to upload $local_dir/$filename.add");
 
     $logger->debug("Uploading $local_dir/$filename.add.check");
-    $sftp->put("$local_dir/$filename.add.check", "$remote_dir/$filename.add.check")
-        or die "Failed to upload $local_dir/$filename.add.check to $remote_dir/$filename.add.check\n";
+    $sftp->put("$local_dir/$filename.add.check", "$remote_dir$filename.add.check")
+        or return (PUSH_RESULT_ERROR, "Failed to upload $local_dir/$filename.add.check");
 
     $logger->debug("Uploading $local_dir/$filename.done");
-    $sftp->put("$local_dir/$filename.done", "$remote_dir/$filename.done")
-        or die "Failed to upload $local_dir/$filename.done to $remote_dir/$filename.done\n";
+    $sftp->put("$local_dir/$filename.done", "$remote_dir$filename.done")
+        or return (PUSH_RESULT_ERROR, "Failed to upload $local_dir/$filename.done");
 
     # success
     return (PUSH_RESULT_OK, "uploaded $filename.add");
