@@ -12,15 +12,10 @@ use warnings;
 
 use base 'Bugzilla::Extension::Push::Connector::Base';
 
-use Bugzilla::Attachment;
-use Bugzilla::Bug;
-use Bugzilla::Component;
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Constants;
 use Bugzilla::Extension::Push::Serialise;
 use Bugzilla::Extension::Push::Util;
-use Bugzilla::Field;
-use Bugzilla::Product;
 use Bugzilla::User;
 
 use Digest::MD5 qw(md5_hex);
