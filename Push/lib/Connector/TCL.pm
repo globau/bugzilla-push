@@ -151,14 +151,14 @@ sub send {
         Resolution => $bug_data->{resolution},
     );
     if ($data->{event}->{routing_key} eq 'comment.create') {
-        $xml{comment} = $data->{comment}->{body};
+        $xml{Comment} = $data->{comment}->{body};
     }
 
     # convert to xml
     my $xml = XML::Simple::XMLout(
         \%xml,
         NoAttr => 1,
-        RootName => 'add',
+        RootName => 'sync',
         XMLDecl => 1,
     );
 
@@ -183,8 +183,8 @@ sub send {
     # create temp files;
     my $temp_dir = File::Temp->newdir();
     my $local_dir = $temp_dir->dirname;
-    _write_file("$local_dir/$filename.add", $xml);
-    _write_file("$local_dir/$filename.add.check", $md5);
+    _write_file("$local_dir/$filename.sync", $xml);
+    _write_file("$local_dir/$filename.sync.check", $md5);
     _write_file("$local_dir/$filename.done", '');
 
     my $remote_dir = $self->config->{sftp_remote_path} eq ''
