@@ -13,6 +13,9 @@ use warnings;
 use Bugzilla::Constants;
 use Bugzilla::Extension::Push::Push;
 use Bugzilla::Extension::Push::Logger;
+use Bugzilla::Extension::Push::Connectors;
+use Bugzilla::Extension::Push::BacklogQueue;
+use Bugzilla::Extension::Push::Queue;
 use Carp qw(confess);
 use Daemon::Generic;
 use File::Basename;
@@ -91,6 +94,22 @@ sub gd_run {
     $push->logger->{debug} = $self->{debug};
     $push->is_daemon(1);
     $push->start();
+}
+
+sub gd_check {
+    my $self = shift;
+
+    # Get a list of connectors.
+    my @names = Bugzilla::Extension::Push::Connectors->new->names;
+    foreach my $name (@names) {
+        # Print out the number of backlogged messages in each queue.
+        my $backlog = Bugzilla::Extension::Push::BacklogQueue->new($name);
+        print "$name backlog: ", $backlog->count, "\n";
+    }
+
+    # The messages that we have not attempted to send.
+    my $queue = Bugzilla::Extension::Push::Queue->new;
+    print 'Pending queue: ', $queue->count, "\n";
 }
 
 1;
