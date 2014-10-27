@@ -157,8 +157,11 @@ sub _object_modified {
         changes   => [],
     };
     foreach my $field_name (sort keys %$changes) {
+        my $new_field_name = $field_name;
+        $new_field_name =~ s/isprivate/is_private/;
+
         push @{$changes_data->{'changes'}}, {
-            field   => $field_name,
+            field   => $new_field_name,
             removed => $changes->{$field_name}[0],
             added   => $changes->{$field_name}[1],
         };
@@ -640,6 +643,16 @@ sub install_filesystem {
     $files->{$scriptname} = {
         perms => Bugzilla::Install::Filesystem::WS_EXECUTE
     };
+}
+
+sub db_sanitize {
+    my $dbh = Bugzilla->dbh;
+    print "Deleting push extension logs and messages...\n";
+    $dbh->do("DELETE FROM push");
+    $dbh->do("DELETE FROM push_backlog");
+    $dbh->do("DELETE FROM push_backoff");
+    $dbh->do("DELETE FROM push_log");
+    $dbh->do("DELETE FROM push_options");
 }
 
 __PACKAGE__->NAME;
